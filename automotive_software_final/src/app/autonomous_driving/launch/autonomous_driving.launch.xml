@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<launch>
+    <arg name="ns1" default="ego"/>
+    <arg name="loop_rate_hz" default="100.0"/>
+    <arg name="use_manual_inputs" default="false" />
+
+    <!-- Perception Node -->
+    <node pkg="autonomous_driving" exec="perception_node" name="perception_node" namespace="$(var ns1)" output="screen">
+        <param name="autonomous_driving/ns" value="$(var ns1)"/>
+        <param name="autonomous_driving/loop_rate_hz" value="$(var loop_rate_hz)"/>
+        <param name="autonomous_driving/use_manual_inputs" value="$(var use_manual_inputs)"/>
+    </node>
+
+    <!-- Planning Node -->
+    <node pkg="autonomous_driving" exec="planning_node" name="planning_node" namespace="$(var ns1)" output="screen">
+        <param name="autonomous_driving/ns" value="$(var ns1)"/>
+        <param name="autonomous_driving/loop_rate_hz" value="$(var loop_rate_hz)"/>
+        <param name="autonomous_driving/use_manual_inputs" value="$(var use_manual_inputs)"/>
+    </node>
+
+    <!-- Control Node -->
+    <node pkg="autonomous_driving" exec="control_node" name="control_node" namespace="$(var ns1)" output="screen">
+        <param name="autonomous_driving/ns" value="$(var ns1)"/>
+        <param name="autonomous_driving/loop_rate_hz" value="$(var loop_rate_hz)"/>
+        <param name="autonomous_driving/use_manual_inputs" value="$(var use_manual_inputs)"/>
+    </node>
+</launch>
