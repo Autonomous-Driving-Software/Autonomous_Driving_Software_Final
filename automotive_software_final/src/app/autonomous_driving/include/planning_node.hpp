@@ -32,6 +32,31 @@
 
 class PlanningNode : public rclcpp::Node {
     public:
+        //================================
+        // 주행 모드 정의
+        //================================
+        enum class DrivingMode {
+            NORMAL_DRIVING, // 일반 주행
+            SCC, // Safe Cruise Control
+            LANE_CHANGE // 차선 변경
+        };
+
+        //================================
+        // Behavior 정보를 담는 context 구조체(struct) 정의
+        //================================
+        struct BehaviorContext {
+            DrivingMode current_mode = DrivingMode::NORMAL_DRIVING;
+            // SCC 관련 변수 [for Dynamic Obstacle]
+            bool has_dynamic_object = false;
+            double v_lead = 1e6;
+            double dist_lead = 1e6;
+            double ttc_lead = 1e6;
+
+            // Lane Change 관련 변수 [for Static Obstacle]
+            bool has_static_object = false;
+            double dist_static = 1e6;
+        };
+
         explicit PlanningNode(const std::string& node_name, const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
         virtual ~PlanningNode();
 
@@ -41,7 +66,7 @@ class PlanningNode : public rclcpp::Node {
     private:
         //----------------------------------------------------//
         // Functions
-        void Init(const rclcpp::Time &current_time);  // ← 이 줄 추가
+        void Init(const rclcpp::Time &current_time);  //이 줄 추가
 
         // Callback functions
         inline void CallbackManualInput(const ad_msgs::msg::VehicleCommand::SharedPtr msg) {
@@ -83,10 +108,17 @@ class PlanningNode : public rclcpp::Node {
 
         ////////////////////// TODO //////////////////////
         // TODO: Add more functions
+
+        //[11.28 다훈 수정] Behavior(모드) 판단 함수 추가
+        BehaviorContext BehaviorPlanning(const interface::VehicleState &vehicle_state, const interface::Mission &mission);
     
-        //[다훈 수정*] VelocityPlanning 함수 추가
+        //[11.28 다훈 수정*] VelocityPlanning 함수 추가 + BehaviorContext 추가
         // - algorithm::FindDrivingWay()
-        double VelocityPlanning(const interface::VehicleState &vehicle_state, const interface::Lane &lane_points, const interface::Mission &mission, const interface::PolyfitLane &driving_way_real);
+        double VelocityPlanning(const interface::VehicleState &vehicle_state, const interface::Lane &lane_points, const interface::Mission &mission, const interface::PolyfitLane &driving_way_real, const BehaviorContext &ctx);
+        
+        //[11.28 다훈 수정] GlobalToEgoCoordinate 함수 추가(dynamic / static obstacle 좌표 변환용)
+        // - algorithm::GlobalTOEgoCoordinate()
+        std::pair<double, double> GlobalToEgoCoordinate(const interface::VehicleState &vehicle_state, double obj_x_global, double obj_y_global);
         //////////////////////////////////////////////////
 
         //----------------------------------------------------//

@@ -39,10 +39,10 @@ typedef struct {
     double param_brake_ratio{1.2};
 
     //4. ROI 파라미터
-    double param_m_ROIFront_param{20.0};
+    double param_m_ROIFront_param{15.0};
     double param_m_ROIRear_param{10.0};
-    double param_m_ROILeft_param{3.0};
-    double param_m_ROIRight_param{3.0};
+    double param_m_ROILeft_param{8.0};
+    double param_m_ROIRight_param{8.0};
     std::string ref_csv_path{""};
 
     // [다훈 수정9] Control Parameters (for longitudinal control)

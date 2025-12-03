@@ -4,11 +4,31 @@
     <arg name="loop_rate_hz" default="100.0"/>
     <arg name="use_manual_inputs" default="false" />
 
+    <!-- RANSAC Parameters -->
+    <arg name="ransac_max_iterations" default="50"/>
+    <arg name="ransac_inlier_threshold" default="0.15"/>
+    <arg name="ransac_min_inlier_ratio" default="0.9"/>
+
+    <!-- ROI Parameters (단위: m) -->
+    <arg name="roi_front" default="20.0"/>
+    <arg name="roi_rear" default="10.0"/>
+    <arg name="roi_left" default="3.0"/>
+    <arg name="roi_right" default="3.0"/>
+
     <!-- Perception Node -->
     <node pkg="autonomous_driving" exec="perception_node" name="perception_node" namespace="$(var ns1)" output="screen">
         <param name="autonomous_driving/ns" value="$(var ns1)"/>
         <param name="autonomous_driving/loop_rate_hz" value="$(var loop_rate_hz)"/>
         <param name="autonomous_driving/use_manual_inputs" value="$(var use_manual_inputs)"/>
+        <!-- RANSAC Parameters -->
+        <param name="autonomous_driving/ransac_max_iterations" value="$(var ransac_max_iterations)"/>
+        <param name="autonomous_driving/ransac_inlier_threshold" value="$(var ransac_inlier_threshold)"/>
+        <param name="autonomous_driving/ransac_min_inlier_ratio" value="$(var ransac_min_inlier_ratio)"/>
+        <!-- ROI Parameters -->
+        <param name="autonomous_driving/roi_front" value="$(var roi_front)"/>
+        <param name="autonomous_driving/roi_rear" value="$(var roi_rear)"/>
+        <param name="autonomous_driving/roi_left" value="$(var roi_left)"/>
+        <param name="autonomous_driving/roi_right" value="$(var roi_right)"/>
     </node>
 
     <!-- Planning Node -->
