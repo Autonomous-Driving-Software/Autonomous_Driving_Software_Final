@@ -8,10 +8,10 @@
   <arg name="loop_rate_display" default="100.0"/>
 
   <!-- LaneDetection -->
-  <arg name="ROI_front" default="20.0"/>
+  <arg name="ROI_front" default="15.0"/>
   <arg name="ROI_rear" default="5.0"/>
-  <arg name="ROI_left" default="4.0"/>
-  <arg name="ROI_right" default="4.0"/>
+  <arg name="ROI_left" default="8.0"/>
+  <arg name="ROI_right" default="8.0"/>
 
   <!-- Simulator -->
   <arg name="init_x" default="0.0"/>
@@ -47,6 +47,10 @@
     <node pkg="simulator" exec="display" name="display" namespace="$(var ns1)" output="screen">
       <param name="display/ns" value="$(var ns1)"/>
       <param name="display/loop_rate_hz" value="$(var loop_rate_display)"/>
+      <param name="display/roi_front" value="$(var ROI_front)"/>
+      <param name="display/roi_rear" value="$(var ROI_rear)"/>
+      <param name="display/roi_left" value="$(var ROI_left)"/>
+      <param name="display/roi_right" value="$(var ROI_right)"/>
     </node>
   </group>
 

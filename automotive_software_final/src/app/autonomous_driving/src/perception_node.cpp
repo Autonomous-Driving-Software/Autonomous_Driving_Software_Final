@@ -29,10 +29,10 @@ PerceptionNode::PerceptionNode(const std::string &node_name, const rclcpp::NodeO
     this->declare_parameter("autonomous_driving/ransac_min_inlier_ratio", 0.9);
 
     // ROI Parameters
-    this->declare_parameter("autonomous_driving/roi_front", 15.0);
+    this->declare_parameter("autonomous_driving/roi_front", 20.0);
     this->declare_parameter("autonomous_driving/roi_rear", 10.0);
-    this->declare_parameter("autonomous_driving/roi_left", 8.0);
-    this->declare_parameter("autonomous_driving/roi_right", 8.0);
+    this->declare_parameter("autonomous_driving/roi_left", 3.0);
+    this->declare_parameter("autonomous_driving/roi_right", 3.0);
 
     ProcessParams();
 

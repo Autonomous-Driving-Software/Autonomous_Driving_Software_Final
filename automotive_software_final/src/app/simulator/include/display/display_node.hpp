@@ -107,10 +107,10 @@ class Display : public rclcpp::Node {
                                const rclcpp::Time& current_time);
         void DisplayPolyLanes(const ad_msgs::msg::PolyfitLaneDataArray& poly_lanes,
                               const rclcpp::Time& current_time,
-                              const double& interval, const double& ROILength);
+                              const double& interval, const DisplayConfig& cfg);
         void DisplayDrivingWay(const ad_msgs::msg::PolyfitLaneData& driving_way,
                                const rclcpp::Time& current_time,
-                               const double& interval, const double& ROILength);
+                               const double& interval, const DisplayConfig& cfg);
         void DisplayCsvLanes(const ad_msgs::msg::LanePointDataArray& csv_lanes,
                              const rclcpp::Time& current_time);
         

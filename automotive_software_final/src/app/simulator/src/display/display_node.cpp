@@ -27,6 +27,10 @@ Display::Display(const std::string& node_name, const rclcpp::NodeOptions& option
     // Parameter init      
     this->declare_parameter("display/ns", "");
     this->declare_parameter("display/loop_rate_hz", 30.0);
+    this->declare_parameter("display/roi_front", 20.0);
+    this->declare_parameter("display/roi_rear", 5.0);
+    this->declare_parameter("display/roi_left", 4.0);
+    this->declare_parameter("display/roi_right", 4.0);
     ProcessParams();
     
     RCLCPP_INFO(this->get_logger(), "vehicle_namespace: %s", cfg_.vehicle_namespace.c_str());
@@ -84,6 +88,10 @@ Display::~Display() {}
 void Display::ProcessParams() {
     this->get_parameter("display/ns", cfg_.vehicle_namespace);
     this->get_parameter("display/loop_rate_hz", cfg_.loop_rate_hz);
+    this->get_parameter("display/roi_front", cfg_.roi_front);
+    this->get_parameter("display/roi_rear", cfg_.roi_rear);
+    this->get_parameter("display/roi_left", cfg_.roi_left);
+    this->get_parameter("display/roi_right", cfg_.roi_right);
 }
 
 void Display::Run() {
@@ -177,14 +185,14 @@ void Display::Run() {
     if (b_is_poly_lanes_ == true) {
         if ((current_time.seconds() - time_poly_lanes_marker_) > 0.2) {
             time_poly_lanes_marker_ = current_time.seconds();
-            DisplayPolyLanes(poly_lanes, current_time, 0.1, 30.0);
+            DisplayPolyLanes(poly_lanes, current_time, 0.1, cfg_);
         }
     }
 
     if (b_is_driving_way_ == true) {
         if ((current_time.seconds() - time_driving_way_marker_) > 0.2) {
             time_driving_way_marker_ = current_time.seconds();
-            DisplayDrivingWay(driving_way, current_time, 0.1, 30.0);
+            DisplayDrivingWay(driving_way, current_time, 0.1, cfg_);
         }
     }
 }
@@ -463,25 +471,26 @@ void Display::DisplayLanePoints(const ad_msgs::msg::LanePointData& lane_points,
 
 void Display::DisplayPolyLanes(const ad_msgs::msg::PolyfitLaneDataArray& poly_lanes,
                                const rclcpp::Time& current_time,
-                               const double& interval, const double& ROILength) {
+                               const double& interval, const DisplayConfig& cfg) {
 
     visualization_msgs::msg::MarkerArray markerArray;
 
     for (auto& lane : poly_lanes.polyfitlanes) {
-        double x = 0.0;
-        double y = lane.a0;
+        double a0 = lane.a0;
+        double a1 = lane.a1;
+        double a2 = lane.a2;
+        double a3 = lane.a3;
 
-        double distance_square = x * x + y * y;
         int id = 0;
 
-        while (distance_square < ROILength * ROILength) {
-            double a0 = lane.a0;
-            double a1 = lane.a1;
-            double a2 = lane.a2;
-            double a3 = lane.a3;
+        // x 범위: -roi_rear ~ +roi_front (ROI 파라미터 사용)
+        for (double x = -cfg.roi_rear; x <= cfg.roi_front; x += interval) {
+            double y = a0 + a1 * x + a2 * x * x + a3 * x * x * x;
 
-            y = a0 + a1 * x + a2 * x * x + a3 * x * x * x;
-            distance_square = x * x + y * y;
+            // y가 ROI 범위 내에 있는지 확인 (좌: +, 우: -)
+            if (y < -cfg.roi_right || y > cfg.roi_left) {
+                continue;
+            }
 
             visualization_msgs::msg::Marker marker;
             marker.header.frame_id = lane.frame_id;
@@ -510,7 +519,6 @@ void Display::DisplayPolyLanes(const ad_msgs::msg::PolyfitLaneDataArray& poly_la
             marker.lifetime = rclcpp::Duration(0, int64_t(0.2*1e9));
 
             markerArray.markers.push_back(marker);
-            x += interval;
         }
     }
     p_poly_lanes_marker_->publish(markerArray);
@@ -518,24 +526,25 @@ void Display::DisplayPolyLanes(const ad_msgs::msg::PolyfitLaneDataArray& poly_la
 
 void Display::DisplayDrivingWay(const ad_msgs::msg::PolyfitLaneData& driving_way,
                                 const rclcpp::Time& current_time,
-                                const double& interval, const double& ROILength) {
+                                const double& interval, const DisplayConfig& cfg) {
 
     double a0 = driving_way.a0;
     double a1 = driving_way.a1;
     double a2 = driving_way.a2;
     double a3 = driving_way.a3;
 
-    double x = 0.0;
-    double y = a0;
-
-    double distance_square = x * x + y * y;
     int id = 0;
 
     visualization_msgs::msg::MarkerArray markerArray;
-    while (distance_square < ROILength * ROILength) {
 
-        y = a0 + a1 * x + a2 * x * x + a3 * x * x * x;
-        distance_square = x * x + y * y;
+    // x 범위: -roi_rear ~ +roi_front (ROI 파라미터 사용)
+    for (double x = -cfg.roi_rear; x <= cfg.roi_front; x += interval) {
+        double y = a0 + a1 * x + a2 * x * x + a3 * x * x * x;
+
+        // y가 ROI 범위 내에 있는지 확인
+        if (y < -cfg.roi_right || y > cfg.roi_left) {
+            continue;
+        }
 
         visualization_msgs::msg::Marker marker;
         marker.header.frame_id = driving_way.frame_id;
@@ -564,7 +573,6 @@ void Display::DisplayDrivingWay(const ad_msgs::msg::PolyfitLaneData& driving_way
         marker.lifetime = rclcpp::Duration(0, int64_t(0.2*1e9));
 
         markerArray.markers.push_back(marker);
-        x += interval;
     }
     p_driving_way_marker_->publish(markerArray);
 }

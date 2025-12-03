@@ -21,6 +21,12 @@ typedef struct {
     std::string mesh_dir{""};
 
     double loop_rate_hz{100.0};
+
+    // ROI Parameters
+    double roi_front{20.0};
+    double roi_rear{5.0};
+    double roi_left{4.0};
+    double roi_right{4.0};
 } DisplayConfig;
 
 #endif // __DISPLAY_CONFIG_HPP__
