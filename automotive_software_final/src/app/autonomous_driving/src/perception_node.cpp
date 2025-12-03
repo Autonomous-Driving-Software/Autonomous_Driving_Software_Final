@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <limits>
 #include <numeric>
+#include <cmath>
 
 using namespace Eigen;
 using namespace std;
@@ -21,7 +22,6 @@ PerceptionNode::PerceptionNode(const std::string &node_name, const rclcpp::NodeO
     //declare parameters(파라미터 등록+초기값 설정)
     this->declare_parameter("autonomous_driving/ns", "");
     this->declare_parameter("autonomous_driving/loop_rate_hz", 100.0);
-    this->declare_parameter("autonomous_driving/use_manual_inputs", false);
 
     // RANSAC Parameters
     this->declare_parameter("autonomous_driving/ransac_max_iterations", 50);
@@ -38,44 +38,19 @@ PerceptionNode::PerceptionNode(const std::string &node_name, const rclcpp::NodeO
 
     RCLCPP_INFO(this->get_logger(), "vehicle_namespace: %s", cfg_.vehicle_namespace.c_str());
     RCLCPP_INFO(this->get_logger(), "loop_rate_hz: %f", cfg_.loop_rate_hz);
-    RCLCPP_INFO(this->get_logger(), "use_manual_inputs: %d", cfg_.use_manual_inputs);
-
-    // get parameters(파라미터 값 가져오기)
-
-    // ROI
-    //this->get_parameter("autonomous_driving/roi_front_length", cfg_.param_m_roi_front_length);
-    //this->get_parameter("autonomous_driving/roi_rear_length", cfg_.param_m_roi_rear_length);
-    //this->get_parameter("autonomous_driving/roi_left_width", cfg_.param_m_roi_left_width);
-    //this->get_parameter("autonomous_driving/roi_right_width", cfg_.param_m_roi_right_width);
-
-    // Reference Path
-    //this->get_parameter("autonomous_driving/ref_csv_path", cfg_.param_ref_csv_path);
-
+    
     //===========subscriber init===============
-    //(1)s_manual_input_
-    s_manual_input_ = 
-    this->create_subscription<ad_msgs::msg::VehicleCommand>(
-        "/manual_input", qos_profile, std::bind(&PerceptionNode::CallbackManualInput, this, std::placeholders::_1));
 
-    //(2) s_vehicle_state_
     s_vehicle_state_ = 
     this->create_subscription<ad_msgs::msg::VehicleState>(
         "vehicle_state", qos_profile, std::bind(&PerceptionNode::CallbackVehicleState, this, std::placeholders::_1));
 
-    //(3) s_lane_points_
     s_lane_points_ = 
     this->create_subscription<ad_msgs::msg::LanePointData>(
         "lane_points", qos_profile, std::bind(&PerceptionNode::CallbackLanePoints, this, std::placeholders::_1));
 
-    //(4) s_mission_
-    //s_mission_ = 
-    //this->create_subscription<ad_msgs::msg::Mission>(
-    //    "mission", qos_profile, std::bind(&PerceptionNode::CallbackMission, this, std::placeholders::_1));
-
     //===========publisher init===============
-    //p_vehicle_command_ = 
-    //this->create_publisher<ad_msgs::msg::VehicleCommand>(
-    //    "vehicle_command", qos_profile);
+
     p_driving_way_= 
     this->create_publisher<ad_msgs::msg::PolyfitLaneData>(
         "driving_way", qos_profile);
@@ -83,8 +58,7 @@ PerceptionNode::PerceptionNode(const std::string &node_name, const rclcpp::NodeO
     p_poly_lanes_ = 
     this->create_publisher<ad_msgs::msg::PolyfitLaneDataArray>(
         "poly_lanes", qos_profile);
-
-    // Timer init
+    
     t_run_node_ = this->create_wall_timer(
         std::chrono::milliseconds((int64_t)(1000 / cfg_.loop_rate_hz)),
         [this]() { this->Run(); });
@@ -96,12 +70,11 @@ void PerceptionNode::ProcessParams() {
     //get parameters : 선언한 파라미터 값을 읽어오기
     this->get_parameter("autonomous_driving/ns", cfg_.vehicle_namespace);
     this->get_parameter("autonomous_driving/loop_rate_hz", cfg_.loop_rate_hz);
-    this->get_parameter("autonomous_driving/use_manual_inputs", cfg_.use_manual_inputs);
 
     // RANSAC Parameters
-    this->get_parameter("autonomous_driving/ransac_max_iterations", cfg_.ransac_max_iterations);
-    this->get_parameter("autonomous_driving/ransac_inlier_threshold", cfg_.ransac_inlier_threshold);
-    this->get_parameter("autonomous_driving/ransac_min_inlier_ratio", cfg_.ransac_min_inlier_ratio);
+    this->get_parameter("autonomous_driving/ransac_max_iterations", ransac_max_iterations);
+    this->get_parameter("autonomous_driving/ransac_inlier_threshold", ransac_inlier_threshold);
+    this->get_parameter("autonomous_driving/ransac_min_inlier_ratio", ransac_min_inlier_ratio);
 
     // ROI Parameters
     this->get_parameter("autonomous_driving/roi_front", cfg_.param_m_ROIFront_param);
@@ -113,37 +86,19 @@ void PerceptionNode::ProcessParams() {
 void PerceptionNode::Run() {
     //===================================================
     // Get subscribe variables 
-    // 일종의 input데이터 수집 단계 (멤버 변수 -> 지역변수로 복사 (mutex로 보호))
     //===================================================
-    if (cfg_.use_manual_inputs == true) {
-        if (b_is_manual_input_ == false) {
-            RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Wait for Manual Input ...");
-            return;
-        }
-    }
-
     if (b_is_simulator_on_ == false) {
         RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Wait for Vehicle State ...");
         return;
     }
-
     if (b_is_lane_points_ == false) {
         RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Wait for Lane Points ...");
         return;
     }
-
-    interface::VehicleCommand manual_input; {
-        if (cfg_.use_manual_inputs == true) {
-            std::lock_guard<std::mutex> lock(mutex_manual_input_);
-            manual_input = i_manual_input_;
-        }
-    }
-
     interface::VehicleState vehicle_state; {
         std::lock_guard<std::mutex> lock(mutex_vehicle_state_);
         vehicle_state = i_vehicle_state_;
     }
-
     interface::Lane lane_points; {
         std::lock_guard<std::mutex> lock(mutex_lane_points_);
         lane_points = i_lane_points_;
@@ -158,16 +113,14 @@ void PerceptionNode::Run() {
     //===================================================
     // Publish output
     //===================================================
-    // driving way
     p_driving_way_->publish(ros2_bridge::UpdatePolyfitLane(driving_way));
     p_poly_lanes_->publish(ros2_bridge::UpdatePolyfitLanes(poly_lanes));
 
 }
 
 
-
-
 interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_points) {
+
     interface::PolyfitLanes lanes;
     lanes.frame_id = lane_points.frame_id;
 
@@ -182,6 +135,7 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
 
     double min_x = lane_points.point.front().x;
     double max_x = lane_points.point.front().x;
+
     for (const auto& pt : lane_points.point) {
         min_x = std::min(min_x, pt.x);
         max_x = std::max(max_x, pt.x);
@@ -271,6 +225,11 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
     };
 
     std::vector<std::vector<Eigen::Vector2d>> lane_centers(kLaneCount);
+    
+    // 이전 슬라이스의 차선 Y 위치를 추적 (차선 일관성 유지용)
+    std::vector<double> prev_lane_positions(kLaneCount, std::numeric_limits<double>::quiet_NaN());
+    bool prev_initialized = false;
+    
     for (size_t slice_idx = 0; slice_idx < slices.size(); ++slice_idx) {
         if (slices[slice_idx].empty()) {
             continue;
@@ -284,18 +243,117 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
         auto clusters = kmeans1D(ys);
         double x_center = sliceXCenter(static_cast<int>(slice_idx), slices[slice_idx]);
 
-        int lane_id = 0;
+        // 비어있지 않은 클러스터만 추출
+        std::vector<std::pair<double, double>> valid_clusters; // (center_y, mean_y)
         for (const auto& cluster : clusters) {
-            if (lane_id >= kLaneCount) {
-                break;
+            if (!cluster.second.empty()) {
+                double y_mean = std::accumulate(cluster.second.begin(), cluster.second.end(), 0.0) / cluster.second.size();
+                valid_clusters.push_back({cluster.first, y_mean});
             }
-            if (cluster.second.empty()) {
-                ++lane_id;
-                continue;
+        }
+
+        if (valid_clusters.empty()) {
+            continue;
+        }
+
+        // Y값 기준으로 정렬 (왼쪽 차선이 Y값이 큼 -> 내림차순 정렬)
+        std::sort(valid_clusters.begin(), valid_clusters.end(), [](const auto& a, const auto& b) {
+            return a.second > b.second;  // Y값 내림차순 (좌측부터)
+        });
+
+        if (!prev_initialized) {
+            // 첫 번째 유효한 슬라이스: 클러스터를 차선에 직접 할당
+            // 클러스터 개수에 따라 차선 ID 배치 (중앙 차선 우선)
+            int num_clusters = static_cast<int>(valid_clusters.size());
+            std::vector<int> lane_assignments;
+            
+            if (num_clusters == 4) {
+                lane_assignments = {0, 1, 2, 3};  // 모든 차선
+            } else if (num_clusters == 3) {
+                lane_assignments = {0, 1, 2};     // 3개 차선
+            } else if (num_clusters == 2) {
+                lane_assignments = {1, 2};        // 중앙 2개 차선 (ego vehicle 양옆)
+            } else {
+                lane_assignments = {1};           // 1개면 왼쪽 차선으로 가정
             }
-            double y_center = std::accumulate(cluster.second.begin(), cluster.second.end(), 0.0) / cluster.second.size();
-            lane_centers[lane_id].push_back(Eigen::Vector2d(x_center, y_center));
-            ++lane_id;
+
+            for (size_t i = 0; i < valid_clusters.size() && i < lane_assignments.size(); ++i) {
+                int lane_id = lane_assignments[i];
+                if (lane_id < kLaneCount) {
+                    lane_centers[lane_id].push_back(Eigen::Vector2d(x_center, valid_clusters[i].second));
+                    prev_lane_positions[lane_id] = valid_clusters[i].second;
+                }
+            }
+            prev_initialized = true;
+        } else {
+            // 이전 슬라이스 기반 매칭: Hungarian-like greedy matching
+            std::vector<bool> cluster_used(valid_clusters.size(), false);
+            std::vector<bool> lane_matched(kLaneCount, false);
+            
+            // 각 이전 차선 위치에 가장 가까운 클러스터 매칭
+            for (int lane_id = 0; lane_id < kLaneCount; ++lane_id) {
+                if (std::isnan(prev_lane_positions[lane_id])) {
+                    continue;
+                }
+                
+                double min_dist = std::numeric_limits<double>::max();
+                int best_cluster = -1;
+                
+                for (size_t c = 0; c < valid_clusters.size(); ++c) {
+                    if (cluster_used[c]) {
+                        continue;
+                    }
+                    double dist = std::abs(valid_clusters[c].second - prev_lane_positions[lane_id]);
+                    // 차선 간격의 절반(약 1.75m) 이내만 매칭 허용
+                    if (dist < min_dist && dist < 1.75) {
+                        min_dist = dist;
+                        best_cluster = static_cast<int>(c);
+                    }
+                }
+                
+                if (best_cluster >= 0) {
+                    cluster_used[best_cluster] = true;
+                    lane_matched[lane_id] = true;
+                    lane_centers[lane_id].push_back(Eigen::Vector2d(x_center, valid_clusters[best_cluster].second));
+                    prev_lane_positions[lane_id] = valid_clusters[best_cluster].second;
+                }
+            }
+            
+            // 매칭되지 않은 클러스터 처리: 새로운 차선으로 할당
+            for (size_t c = 0; c < valid_clusters.size(); ++c) {
+                if (cluster_used[c]) {
+                    continue;
+                }
+                // 빈 차선 슬롯 찾기 (Y 위치 기준으로 적절한 슬롯 선택)
+                double cluster_y = valid_clusters[c].second;
+                int best_lane = -1;
+                
+                for (int lane_id = 0; lane_id < kLaneCount; ++lane_id) {
+                    if (!lane_matched[lane_id]) {
+                        // 아직 매칭 안 된 슬롯 중 Y 위치가 적절한 것 선택
+                        if (best_lane == -1) {
+                            best_lane = lane_id;
+                        } else {
+                            // 차선 순서 유지: lane_id가 작을수록 Y가 커야 함
+                            bool should_use = false;
+                            if (lane_id < best_lane && cluster_y > 0) {
+                                should_use = true;
+                            } else if (lane_id > best_lane && cluster_y < 0) {
+                                should_use = true;
+                            }
+                            if (should_use) {
+                                best_lane = lane_id;
+                            }
+                        }
+                    }
+                }
+                
+                if (best_lane >= 0 && best_lane < kLaneCount) {
+                    lane_matched[best_lane] = true;
+                    lane_centers[best_lane].push_back(Eigen::Vector2d(x_center, cluster_y));
+                    prev_lane_positions[best_lane] = cluster_y;
+                }
+            }
         }
     }
 
@@ -328,7 +386,7 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
         std::vector<int> best_inlier_indices;
 
         std::uniform_int_distribution<> dis(0, static_cast<int>(pts.size()) - 1);
-        for (int iter = 0; iter < cfg_.ransac_max_iterations; ++iter) {
+        for (int iter = 0; iter < ransac_max_iterations; ++iter) {
             std::set<int> sample_indices;
             while (static_cast<int>(sample_indices.size()) < min_points_for_fit) {
                 sample_indices.insert(dis(gen));
@@ -354,7 +412,7 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
                 double x = pts[i].x();
                 double y_pred = coeffs(0) + coeffs(1) * x + coeffs(2) * x * x + coeffs(3) * x * x * x;
                 double error = std::abs(y_pred - pts[i].y());
-                if (error < cfg_.ransac_inlier_threshold) {
+                if (error < ransac_inlier_threshold) {
                     inliers.push_back(static_cast<int>(i));
                 }
             }
@@ -365,7 +423,7 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
                 best_inlier_indices = inliers;
             }
 
-            if (best_inliers > static_cast<int>(pts.size() * cfg_.ransac_min_inlier_ratio)) {
+            if (best_inliers > static_cast<int>(pts.size() * ransac_min_inlier_ratio)) {
                 break;
             }
         }
@@ -401,6 +459,7 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
 }
 
 interface::PolyfitLane PerceptionNode::FindDrivingWay(const interface::VehicleState &vehicle_state, const interface::PolyfitLanes& lanes) {
+    
     (void)vehicle_state;
     interface::PolyfitLane driving_way;
     driving_way.frame_id = lanes.frame_id;
@@ -441,15 +500,9 @@ interface::PolyfitLane PerceptionNode::FindDrivingWay(const interface::VehicleSt
     driving_way.a1 = center_coeffs(1);
     driving_way.a2 = center_coeffs(2);
     driving_way.a3 = center_coeffs(3);
+    
     return driving_way;
 }
-
-interface::PolyfitLane PerceptionNode::FindDrivingWayNew(const interface::VehicleState &vehicle_state, const interface::Lane& lane_points) {
-    auto lanes = FindLanes(lane_points);
-    auto driving_way = FindDrivingWay(vehicle_state, lanes);
-    return driving_way;
-}
-
 
 int main(int argc, char **argv) {
     std::string node_name = "perception_node";

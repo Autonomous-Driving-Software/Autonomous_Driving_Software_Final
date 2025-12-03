@@ -13,7 +13,7 @@
 #include <chrono>
 #include <eigen3/Eigen/Dense> 
 
-// Interface Header (ROS 독립적)
+// Interface Header
 #include "interface_lane.hpp"
 #include "interface_vehicle.hpp" 
 
@@ -34,18 +34,11 @@ class PerceptionNode : public rclcpp::Node {
         void Run();
 
     private:
-        //----------------------------------------------------//
-        // Functions
-        void Init(const rclcpp::Time &current_time);  // ← 이 줄 추가
+        //===============================================
+        // Functions 
+        //===============================================
+        void Init(const rclcpp::Time &current_time); 
 
-        // Callback functions
-        inline void CallbackManualInput(const ad_msgs::msg::VehicleCommand::SharedPtr msg) {
-            std::lock_guard<std::mutex> lock(mutex_manual_input_);
-            if (cfg_.use_manual_inputs == true) {
-                i_manual_input_ = ros2_bridge::GetVehicleCommand(*msg);
-                b_is_manual_input_ = true;
-            }
-        }
         inline void CallbackVehicleState(const ad_msgs::msg::VehicleState::SharedPtr msg) {            
             std::lock_guard<std::mutex> lock(mutex_vehicle_state_);
             i_vehicle_state_ = ros2_bridge::GetVehicleState(*msg);
@@ -56,61 +49,58 @@ class PerceptionNode : public rclcpp::Node {
             i_lane_points_ = ros2_bridge::GetLanePoints(*msg);
             b_is_lane_points_ = true;
         }
-        //inline void CallbackMission(const ad_msgs::msg::Mission::SharedPtr msg) {
-        //    std::lock_guard<std::mutex> lock(mutex_mission_);
-        //    i_mission_ = ros2_bridge::GetMission(*msg);
-        //    b_is_mission_ = true;
-        //}
 
-        ////////////////////// TODO //////////////////////
-        // TODO: Add more functions
-        
-        // - algorithm::FindDrivingWay()
-        interface::PolyfitLane FindDrivingWay(const interface::VehicleState &vehicle_state, const interface::Lane& lane_points);
-        interface::PolyfitLane FindDrivingWayWithRansac(const interface::VehicleState &vehicle_state, const interface::Lane& lane_points);
+        /**
+         * @brief 차선 포인트 데이터를 3차 다항식으로 피팅하여 차선을 검출하는 함수
+         * @param lane_points 차선 포인트 배열
+         * @return 검출된 차선들의 다항식 계수 (a0, a1, a2, a3)
+         */
         interface::PolyfitLanes FindLanes(const interface::Lane& lane_points);
+
+        /**
+         * @brief 검출된 차선들의 중앙선을 계산하여 주행 경로를 생성하는 함수
+         * @param vehicle_state 현재 차량 상태
+         * @param lanes 검출된 차선들
+         * @return 주행 경로의 다항식 계수
+         */
         interface::PolyfitLane FindDrivingWay(const interface::VehicleState &vehicle_state, const interface::PolyfitLanes& lanes);
-        interface::PolyfitLane FindDrivingWayNew(const interface::VehicleState &vehicle_state, const interface::Lane& lane_points);
-        //----------------------------------------------------//
-        // Variable
-
-        // Subscriber 
-        rclcpp::Subscription<ad_msgs::msg::VehicleCommand>::SharedPtr s_manual_input_;
-        rclcpp::Subscription<ad_msgs::msg::VehicleState>::SharedPtr s_vehicle_state_;
-        rclcpp::Subscription<ad_msgs::msg::LanePointData>::SharedPtr s_lane_points_;
-        //rclcpp::Subscription<ad_msgs::msg::Mission>::SharedPtr s_mission_;
-
-        // Input
+        
+        //===============================================
+        // Variables
+        //===============================================
         interface::VehicleCommand i_manual_input_;
         interface::VehicleState i_vehicle_state_;
         interface::Lane i_lane_points_;
-        //interface::Mission i_mission_;
+        
+        int ransac_max_iterations;
+        double ransac_inlier_threshold;
+        double ransac_min_inlier_ratio;
 
-        // Mutex
         std::mutex mutex_manual_input_;
         std::mutex mutex_vehicle_state_;
         std::mutex mutex_lane_points_;
-        //std::mutex mutex_mission_;
         
-        //===============================================
-        // Publisher (멤버 선언)
-        //===============================================
-        // (1)poly lanes publish
-        rclcpp::Publisher<ad_msgs::msg::PolyfitLaneDataArray>::SharedPtr p_poly_lanes_;
-        // (2)driving_way_raw publish
-        rclcpp::Publisher<ad_msgs::msg::PolyfitLaneData>::SharedPtr p_driving_way_;
-
-        // Timer
         rclcpp::TimerBase::SharedPtr t_run_node_;
 
-        // Util and Configuration
         AutonomousDrivingConfig cfg_;
 
-        // Flag
         bool b_is_manual_input_ = false;
         bool b_is_simulator_on_ = false;
         bool b_is_lane_points_ = false;
-        //bool b_is_mission_ = false;
+
+        //===============================================
+        // Subscriber
+        //===============================================
+        rclcpp::Subscription<ad_msgs::msg::VehicleCommand>::SharedPtr s_manual_input_;
+        rclcpp::Subscription<ad_msgs::msg::VehicleState>::SharedPtr s_vehicle_state_;
+        rclcpp::Subscription<ad_msgs::msg::LanePointData>::SharedPtr s_lane_points_;
+        
+        //===============================================
+        // Publisher
+        //===============================================
+        rclcpp::Publisher<ad_msgs::msg::PolyfitLaneDataArray>::SharedPtr p_poly_lanes_;
+        rclcpp::Publisher<ad_msgs::msg::PolyfitLaneData>::SharedPtr p_driving_way_;
+
     };
 
 #endif // __PERCEPTION_NODE_HPP__
