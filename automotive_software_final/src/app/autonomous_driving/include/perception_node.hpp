@@ -105,7 +105,7 @@ class PerceptionNode : public rclcpp::Node {
         static constexpr int kMinPointsForFit = 4;
         static constexpr double kEmaAlpha = 0.4;  // EMA 블렌딩 비율 (0.0~1.0, 높을수록 새 값 반영)
         std::vector<Eigen::Vector4d> prev_lane_coeffs_{4, Eigen::Vector4d::Zero()};
-        std::vector<bool> prev_lane_valid_{4, false};
+        std::vector<bool> prev_lane_valid_ = std::vector<bool>(4, false);
 
         std::mutex mutex_manual_input_;
         std::mutex mutex_vehicle_state_;

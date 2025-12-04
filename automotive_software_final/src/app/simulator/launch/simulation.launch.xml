@@ -10,8 +10,8 @@
   <!-- LaneDetection -->
   <arg name="ROI_front" default="15.0"/>
   <arg name="ROI_rear" default="5.0"/>
-  <arg name="ROI_left" default="8.0"/>
-  <arg name="ROI_right" default="8.0"/>
+  <arg name="ROI_left" default="3.0"/>
+  <arg name="ROI_right" default="3.0"/>
 
   <!-- Simulator -->
   <arg name="init_x" default="0.0"/>
