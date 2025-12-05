@@ -1,17 +1,47 @@
-/*
- * perception_node.cpp
+/**
+ * @file perception_node.cpp
+ * @brief Robust Lane Detection Module for Autonomous Driving
+ * 
+ * Main Functions:
+ * - FindLanes: Detect 2 closest lanes (left/right)
+ * - FindDrivingWay: Generate driving path from detected lanes
+ * 
+ * Helper Functions (4):
+ * - SliceByX: X축 기준 포인트 분할
+ * - ClusterByY: Y값 기준 K-means 클러스터링  
+ * - MatchClusters: 클러스터-차선 매칭 (ego-based + tracking)
+ * - FitPolynomial: RANSAC 다항식 피팅
+ * 
+ * @note SWE.3: Software Detailed Design & Unit Construction
  */
 #include "autonomous_driving_config.hpp"
 #include "perception_node.hpp"
-#include <random>
-#include <set>
 #include <algorithm>
 #include <limits>
 #include <numeric>
 #include <cmath>
+#include <random>
 
 using namespace Eigen;
 using namespace std;
+
+//=============================================================================
+// Constants
+//=============================================================================
+namespace {
+    constexpr int kLaneCount = 2;
+    constexpr int kMinPointsForFit = 4;
+    constexpr double kSliceWidth = 0.5;
+    constexpr double kMatchingThreshold = 1.75;
+    constexpr int kKmeansMaxIter = 10;
+    constexpr double kConvergenceThreshold = 1e-3;
+    constexpr double kEmaAlpha = 0.4;
+    constexpr double kLaneWidth = 3.5;
+    constexpr int kRansacMaxIter = 50;
+    constexpr double kRansacInlierThreshold = 0.15;
+    constexpr double kRansacMinInlierRatio = 0.7;
+    constexpr int kMaxFramesWithoutUpdate = 5;
+}
 
 PerceptionNode::PerceptionNode(const std::string &node_name, const rclcpp::NodeOptions &options) : Node(node_name, options) {
 
@@ -19,20 +49,8 @@ PerceptionNode::PerceptionNode(const std::string &node_name, const rclcpp::NodeO
     auto qos_profile = rclcpp::QoS(rclcpp::KeepLast(10));
 
     //===============parameters===============
-    //declare parameters(파라미터 등록+초기값 설정)
     this->declare_parameter("autonomous_driving/ns", "");
     this->declare_parameter("autonomous_driving/loop_rate_hz", 100.0);
-
-    // RANSAC Parameters
-    this->declare_parameter("autonomous_driving/ransac_max_iterations", 50);
-    this->declare_parameter("autonomous_driving/ransac_inlier_threshold", 0.15);
-    this->declare_parameter("autonomous_driving/ransac_min_inlier_ratio", 0.9);
-
-    // ROI Parameters
-    this->declare_parameter("autonomous_driving/roi_front", 20.0);
-    this->declare_parameter("autonomous_driving/roi_rear", 10.0);
-    this->declare_parameter("autonomous_driving/roi_left", 3.0);
-    this->declare_parameter("autonomous_driving/roi_right", 3.0);
 
     ProcessParams();
 
@@ -67,20 +85,8 @@ PerceptionNode::PerceptionNode(const std::string &node_name, const rclcpp::NodeO
 PerceptionNode::~PerceptionNode() {}
 
 void PerceptionNode::ProcessParams() {
-    //get parameters : 선언한 파라미터 값을 읽어오기
     this->get_parameter("autonomous_driving/ns", cfg_.vehicle_namespace);
     this->get_parameter("autonomous_driving/loop_rate_hz", cfg_.loop_rate_hz);
-
-    // RANSAC Parameters
-    this->get_parameter("autonomous_driving/ransac_max_iterations", ransac_max_iterations);
-    this->get_parameter("autonomous_driving/ransac_inlier_threshold", ransac_inlier_threshold);
-    this->get_parameter("autonomous_driving/ransac_min_inlier_ratio", ransac_min_inlier_ratio);
-
-    // ROI Parameters
-    this->get_parameter("autonomous_driving/roi_front", cfg_.param_m_ROIFront_param);
-    this->get_parameter("autonomous_driving/roi_rear", cfg_.param_m_ROIRear_param);
-    this->get_parameter("autonomous_driving/roi_left", cfg_.param_m_ROILeft_param);
-    this->get_parameter("autonomous_driving/roi_right", cfg_.param_m_ROIRight_param);
 }
 
 void PerceptionNode::Run() {
@@ -117,424 +123,428 @@ void PerceptionNode::Run() {
     p_poly_lanes_->publish(ros2_bridge::UpdatePolyfitLanes(poly_lanes));
 
 }
+//=============================================================================
+// Data Structures
+//=============================================================================
+struct PointSlice {
+    double x_center;
+    std::vector<interface::Point2D> points;
+};
+
+struct LaneCluster {
+    double center_y;
+    std::vector<double> y_values;
+};
+
+struct LaneTrack {
+    std::vector<Eigen::Vector2d> points;
+    double last_y;
+    bool active;
+};
 
 
-interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_points) {
+//=============================================================================
+// Helper Function 1: SliceByX
+// - X축 기준으로 포인트를 슬라이스로 분할
+//=============================================================================
+std::vector<PointSlice> SliceByX(const interface::Lane& lane_points, double width) {
+    std::vector<PointSlice> slices;
+    if (lane_points.point.empty()) return slices;
 
-    interface::PolyfitLanes lanes;
-    lanes.frame_id = lane_points.frame_id;
-
-    if (lane_points.point.empty()) {
-        return lanes;
-    }
-
-    constexpr int kLaneCount = 4;
-    const double slice_width = 0.5;  // Δx
-    const int kmeans_max_iter = 10;
-
+    // Find X range
     double min_x = lane_points.point.front().x;
     double max_x = lane_points.point.front().x;
-
     for (const auto& pt : lane_points.point) {
         min_x = std::min(min_x, pt.x);
         max_x = std::max(max_x, pt.x);
     }
+    if (max_x - min_x < width) max_x = min_x + width;
 
-    if (max_x - min_x < slice_width) {
-        max_x = min_x + slice_width;
+    // Create and fill slices
+    int count = std::max(1, static_cast<int>(std::ceil((max_x - min_x) / width)));
+    slices.resize(count);
+    
+    for (int i = 0; i < count; ++i) {
+        slices[i].x_center = min_x + (i + 0.5) * width;
     }
 
-    int slice_count = std::max(1, static_cast<int>(std::ceil((max_x - min_x) / slice_width)));
-    std::vector<std::vector<interface::Point2D>> slices(static_cast<size_t>(slice_count));
     for (const auto& pt : lane_points.point) {
-        int idx = static_cast<int>(std::floor((pt.x - min_x) / slice_width));
-        idx = std::max(0, std::min(idx, slice_count - 1));
-        slices[static_cast<size_t>(idx)].push_back(pt);
+        int idx = std::clamp(static_cast<int>((pt.x - min_x) / width), 0, count - 1);
+        slices[idx].points.push_back(pt);
     }
 
-    // 현재 슬라이드의 x 중심점을 찾는다.
-    auto sliceXCenter = [&](int slice_idx, const std::vector<interface::Point2D>& pts) {
-        if (pts.empty()) {
-            return min_x + (slice_idx + 0.5) * slice_width;
+    // Update centers from actual points
+    for (auto& s : slices) {
+        if (!s.points.empty()) {
+            double sum = 0.0;
+            for (const auto& p : s.points) sum += p.x;
+            s.x_center = sum / s.points.size();
         }
-        double sum = 0.0;
-        for (const auto& p : pts) {
-            sum += p.x;
+    }
+
+    return slices;
+}
+
+
+//=============================================================================
+// Helper Function 2: ClusterByY
+// - Y값 기준 1D K-means 클러스터링
+//=============================================================================
+std::vector<LaneCluster> ClusterByY(const std::vector<double>& y_vals, int max_k) {
+    std::vector<LaneCluster> result;
+    if (y_vals.empty()) return result;
+
+    int k = std::min(max_k, static_cast<int>(y_vals.size()));
+
+    // Initialize centers from quantiles
+    std::vector<double> sorted = y_vals;
+    std::sort(sorted.begin(), sorted.end());
+    std::vector<double> centers(k);
+    for (int i = 0; i < k; ++i) {
+        centers[i] = sorted[(sorted.size() - 1) * (2 * i + 1) / (2 * k)];
+    }
+
+    // K-means iteration
+    std::vector<std::vector<double>> groups(k);
+    for (int iter = 0; iter < kKmeansMaxIter; ++iter) {
+        std::vector<std::vector<double>> new_groups(k);
+        
+        for (double y : y_vals) {
+            int best = 0;
+            double best_dist = std::abs(y - centers[0]);
+            for (int c = 1; c < k; ++c) {
+                double d = std::abs(y - centers[c]);
+                if (d < best_dist) { best_dist = d; best = c; }
+            }
+            new_groups[best].push_back(y);
         }
-        return sum / pts.size();
+
+        bool converged = true;
+        for (int c = 0; c < k; ++c) {
+            if (new_groups[c].empty()) continue;
+            double mean = std::accumulate(new_groups[c].begin(), new_groups[c].end(), 0.0) 
+                          / new_groups[c].size();
+            if (std::abs(mean - centers[c]) > kConvergenceThreshold) converged = false;
+            centers[c] = mean;
+        }
+        groups.swap(new_groups);
+        if (converged) break;
+    }
+
+    // Build result
+    for (int c = 0; c < k; ++c) {
+        if (!groups[c].empty()) {
+            result.push_back({centers[c], groups[c]});
+        }
+    }
+    
+    // Sort by Y descending
+    std::sort(result.begin(), result.end(), 
+              [](const auto& a, const auto& b) { return a.center_y > b.center_y; });
+    
+    return result;
+}
+
+
+//=============================================================================
+// Helper Function 3: MatchClusters
+// - 클러스터를 차선 트랙에 매칭
+// - 첫 슬라이스: ego-based (Y>0→left, Y<0→right)
+// - 이후 슬라이스: 이전 Y 위치 기반 추적
+//=============================================================================
+void MatchClusters(const std::vector<LaneCluster>& clusters, double x,
+                   std::vector<LaneTrack>& tracks, double threshold, bool is_first) {
+    
+    // Initialize tracks
+    if (tracks.empty()) {
+        tracks.resize(kLaneCount);
+        for (auto& t : tracks) { t.last_y = NAN; t.active = false; }
+    }
+    if (clusters.empty()) return;
+
+    std::vector<bool> used(clusters.size(), false);
+
+    if (is_first) {
+        // === Ego-based selection for first slice ===
+        // Left: Y>0 중 가장 작은 값 (자차에 가장 가까운 왼쪽)
+        // Right: Y<0 중 가장 큰 값 (자차에 가장 가까운 오른쪽)
+        int left_idx = -1, right_idx = -1;
+        double closest_left = std::numeric_limits<double>::max();
+        double closest_right = std::numeric_limits<double>::lowest();
+
+        for (size_t c = 0; c < clusters.size(); ++c) {
+            double y = clusters[c].center_y;
+            if (y > 0.0 && y < closest_left) {
+                closest_left = y; left_idx = c;
+            } else if (y <= 0.0 && y > closest_right) {
+                closest_right = y; right_idx = c;
+            }
+        }
+
+        if (left_idx >= 0) {
+            double y = clusters[left_idx].center_y;
+            tracks[0].points.push_back({x, y});
+            tracks[0].last_y = y;
+            tracks[0].active = true;
+            used[left_idx] = true;
+        }
+        if (right_idx >= 0) {
+            double y = clusters[right_idx].center_y;
+            tracks[1].points.push_back({x, y});
+            tracks[1].last_y = y;
+            tracks[1].active = true;
+            used[right_idx] = true;
+        }
+    } else {
+        // === Tracking by previous Y position ===
+        for (int lane = 0; lane < kLaneCount; ++lane) {
+            if (!tracks[lane].active || std::isnan(tracks[lane].last_y)) continue;
+            
+            int best = -1;
+            double min_dist = threshold;
+            for (size_t c = 0; c < clusters.size(); ++c) {
+                if (used[c]) continue;
+                double d = std::abs(clusters[c].center_y - tracks[lane].last_y);
+                if (d < min_dist) { min_dist = d; best = c; }
+            }
+            
+            if (best >= 0) {
+                double y = clusters[best].center_y;
+                tracks[lane].points.push_back({x, y});
+                tracks[lane].last_y = y;
+                used[best] = true;
+            }
+        }
+    }
+}
+
+
+//=============================================================================
+// Helper Function 4: FitPolynomial
+// - RANSAC 기반 3차 다항식 피팅 (노이즈 강건)
+// - 포인트 부족 시 LSM 사용
+//=============================================================================
+Eigen::Vector4d FitPolynomial(const std::vector<Eigen::Vector2d>& pts) {
+    Eigen::Vector4d coeffs = Eigen::Vector4d::Zero();
+    if (pts.empty()) return coeffs;
+
+    // LSM fitting lambda
+    auto fit_lsm = [](const std::vector<Eigen::Vector2d>& p) {
+        Eigen::MatrixXd X(p.size(), 4);
+        Eigen::VectorXd Y(p.size());
+        for (size_t i = 0; i < p.size(); ++i) {
+            double x = p[i].x();
+            X(i, 0) = 1.0; X(i, 1) = x; X(i, 2) = x*x; X(i, 3) = x*x*x;
+            Y(i) = p[i].y();
+        }
+        return X.colPivHouseholderQr().solve(Y);
     };
 
-    std::vector<std::vector<Eigen::Vector2d>> lane_centers(kLaneCount);
+    // Not enough points for RANSAC
+    if (pts.size() < 4) return fit_lsm(pts);
+
+    // RANSAC
+    Eigen::Vector4d best = Eigen::Vector4d::Zero();
+    size_t best_count = 0;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::vector<size_t> indices(pts.size());
+    std::iota(indices.begin(), indices.end(), 0);
+
+    for (int iter = 0; iter < kRansacMaxIter; ++iter) {
+        std::shuffle(indices.begin(), indices.end(), gen);
+
+        // Fit with 4 random points
+        std::vector<Eigen::Vector2d> sample(4);
+        for (int i = 0; i < 4; ++i) sample[i] = pts[indices[i]];
+        Eigen::Vector4d c = fit_lsm(sample);
+
+        // Count inliers
+        std::vector<Eigen::Vector2d> inliers;
+        for (const auto& pt : pts) {
+            double x = pt.x();
+            double y_pred = c(0) + c(1)*x + c(2)*x*x + c(3)*x*x*x;
+            if (std::abs(pt.y() - y_pred) < kRansacInlierThreshold) {
+                inliers.push_back(pt);
+            }
+        }
+
+        if (inliers.size() > best_count) {
+            best_count = inliers.size();
+            best = fit_lsm(inliers);
+        }
+
+        if (static_cast<double>(best_count) / pts.size() >= kRansacMinInlierRatio) break;
+    }
+
+    return best;
+}
+
+
+//=============================================================================
+// Main Function 1: FindLanes
+//=============================================================================
+interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_points) {
+    interface::PolyfitLanes lanes;
+    lanes.frame_id = lane_points.frame_id;
+
+    // Handle empty input - use previous
+    if (lane_points.point.empty()) {
+        for (int i = 0; i < kLaneCount; ++i) {
+            if (prev_lane_valid_[i] && prev_frames_without_update_[i] < kMaxFramesWithoutUpdate) {
+                interface::PolyfitLane lane;
+                lane.frame_id = lane_points.frame_id;
+                lane.id = (i == 0) ? "left_lane" : "right_lane";
+                lane.a0 = prev_lane_coeffs_[i](0);
+                lane.a1 = prev_lane_coeffs_[i](1);
+                lane.a2 = prev_lane_coeffs_[i](2);
+                lane.a3 = prev_lane_coeffs_[i](3);
+                lanes.polyfitlanes.push_back(lane);
+                prev_frames_without_update_[i]++;
+            }
+        }
+        return lanes;
+    }
+
+    // Step 1: Slice by X
+    auto slices = SliceByX(lane_points, kSliceWidth);
+    std::sort(slices.begin(), slices.end(), 
+              [](const auto& a, const auto& b) { return a.x_center < b.x_center; });
+
+    // Step 2: Cluster and match
+    std::vector<LaneTrack> tracks;
+    bool first = true;
     
-    // 이전 슬라이스의 차선 Y 위치를 추적 (차선 일관성 유지용)
-    std::vector<double> prev_lane_positions(kLaneCount, std::numeric_limits<double>::quiet_NaN());
-    bool prev_initialized = false;
-    
-    for (size_t slice_idx = 0; slice_idx < slices.size(); ++slice_idx) {
-        if (slices[slice_idx].empty()) {
-            continue;
-        }
-        std::vector<double> ys;
-        ys.reserve(slices[slice_idx].size());
-        for (const auto& pt : slices[slice_idx]) {
-            ys.push_back(pt.y);
-        }
+    for (const auto& slice : slices) {
+        if (slice.points.empty()) continue;
+        
+        std::vector<double> y_vals;
+        for (const auto& pt : slice.points) y_vals.push_back(pt.y);
+        
+        auto clusters = ClusterByY(y_vals, 4);
+        if (clusters.empty()) continue;
+        
+        MatchClusters(clusters, slice.x_center, tracks, kMatchingThreshold, first);
+        if (first && !tracks.empty()) first = false;
+    }
 
-        auto clusters = Kmeans1D(ys, kLaneCount, kmeans_max_iter);
-        double x_center = sliceXCenter(static_cast<int>(slice_idx), slices[slice_idx]);
+    // Step 3: Fit polynomials
+    bool detected[kLaneCount] = {false, false};
+    Eigen::Vector4d coeffs[kLaneCount];
 
-        // 비어있지 않은 클러스터만 추출
-        std::vector<std::pair<double, double>> valid_clusters; // (center_y, mean_y)
-        for (const auto& cluster : clusters) {
-            if (!cluster.second.empty()) {
-                double y_mean = std::accumulate(cluster.second.begin(), cluster.second.end(), 0.0) / cluster.second.size();
-                valid_clusters.push_back({cluster.first, y_mean});
-            }
-        }
-
-        if (valid_clusters.empty()) {
-            continue;
-        }
-
-        // Y값 기준으로 정렬 (왼쪽 차선이 Y값이 큼 -> 내림차순 정렬)
-        std::sort(valid_clusters.begin(), valid_clusters.end(), [](const auto& a, const auto& b) {
-            return a.second > b.second;  // Y값 내림차순 (좌측부터)
-        });
-
-        if (!prev_initialized) {
-            // 첫 번째 유효한 슬라이스: 클러스터를 차선에 직접 할당
-            // 클러스터 개수에 따라 차선 ID 배치 (중앙 차선 우선)
-            int num_clusters = static_cast<int>(valid_clusters.size());
-            std::vector<int> lane_assignments;
+    for (int i = 0; i < kLaneCount; ++i) {
+        if (i >= static_cast<int>(tracks.size())) continue;
+        
+        if (tracks[i].points.size() >= kMinPointsForFit) {
+            Eigen::Vector4d c = FitPolynomial(tracks[i].points);
             
-            if (num_clusters == 4) {
-                lane_assignments = {0, 1, 2, 3};  // 모든 차선
-            } else if (num_clusters == 3) {
-                lane_assignments = {0, 1, 2};     // 3개 차선
-            } else if (num_clusters == 2) {
-                lane_assignments = {1, 2};        // 중앙 2개 차선 (ego vehicle 양옆)
-            } else {
-                lane_assignments = {1};           // 1개면 왼쪽 차선으로 가정
-            }
-
-            for (size_t i = 0; i < valid_clusters.size() && i < lane_assignments.size(); ++i) {
-                int lane_id = lane_assignments[i];
-                if (lane_id < kLaneCount) {
-                    lane_centers[lane_id].push_back(Eigen::Vector2d(x_center, valid_clusters[i].second));
-                    prev_lane_positions[lane_id] = valid_clusters[i].second;
-                }
-            }
-            prev_initialized = true;
-        } else {
-            // 이전 슬라이스 기반 매칭: Hungarian-like greedy matching
-            std::vector<bool> cluster_used(valid_clusters.size(), false);
-            std::vector<bool> lane_matched(kLaneCount, false);
-            
-            // 각 이전 차선 위치에 가장 가까운 클러스터 매칭
-            for (int lane_id = 0; lane_id < kLaneCount; ++lane_id) {
-                if (std::isnan(prev_lane_positions[lane_id])) {
-                    continue;
-                }
-                
-                double min_dist = std::numeric_limits<double>::max();
-                int best_cluster = -1;
-                
-                for (size_t c = 0; c < valid_clusters.size(); ++c) {
-                    if (cluster_used[c]) {
-                        continue;
-                    }
-                    double dist = std::abs(valid_clusters[c].second - prev_lane_positions[lane_id]);
-                    // 차선 간격의 절반(약 1.75m) 이내만 매칭 허용
-                    if (dist < min_dist && dist < 1.75) {
-                        min_dist = dist;
-                        best_cluster = static_cast<int>(c);
-                    }
-                }
-                
-                if (best_cluster >= 0) {
-                    cluster_used[best_cluster] = true;
-                    lane_matched[lane_id] = true;
-                    lane_centers[lane_id].push_back(Eigen::Vector2d(x_center, valid_clusters[best_cluster].second));
-                    prev_lane_positions[lane_id] = valid_clusters[best_cluster].second;
-                }
+            // EMA smoothing
+            if (prev_lane_valid_[i]) {
+                c = kEmaAlpha * c + (1.0 - kEmaAlpha) * prev_lane_coeffs_[i];
             }
             
-            // 매칭되지 않은 클러스터 처리: 새로운 차선으로 할당
-            for (size_t c = 0; c < valid_clusters.size(); ++c) {
-                if (cluster_used[c]) {
-                    continue;
-                }
-                // 빈 차선 슬롯 찾기 (Y 위치 기준으로 적절한 슬롯 선택)
-                double cluster_y = valid_clusters[c].second;
-                int best_lane = -1;
-                
-                for (int lane_id = 0; lane_id < kLaneCount; ++lane_id) {
-                    if (!lane_matched[lane_id]) {
-                        // 아직 매칭 안 된 슬롯 중 Y 위치가 적절한 것 선택
-                        if (best_lane == -1) {
-                            best_lane = lane_id;
-                        } else {
-                            // 차선 순서 유지: lane_id가 작을수록 Y가 커야 함
-                            bool should_use = false;
-                            if (lane_id < best_lane && cluster_y > 0) {
-                                should_use = true;
-                            } else if (lane_id > best_lane && cluster_y < 0) {
-                                should_use = true;
-                            }
-                            if (should_use) {
-                                best_lane = lane_id;
-                            }
-                        }
-                    }
-                }
-                
-                if (best_lane >= 0 && best_lane < kLaneCount) {
-                    lane_matched[best_lane] = true;
-                    lane_centers[best_lane].push_back(Eigen::Vector2d(x_center, cluster_y));
-                    prev_lane_positions[best_lane] = cluster_y;
-                }
-            }
+            coeffs[i] = c;
+            detected[i] = true;
+            prev_lane_coeffs_[i] = c;
+            prev_lane_valid_[i] = true;
+            prev_frames_without_update_[i] = 0;
+            
+        } else if (prev_lane_valid_[i] && prev_frames_without_update_[i] < kMaxFramesWithoutUpdate) {
+            coeffs[i] = prev_lane_coeffs_[i];
+            detected[i] = true;
+            prev_frames_without_update_[i]++;
         }
     }
 
-    for (int lane_id = 0; lane_id < kLaneCount; ++lane_id) {
-        Eigen::Vector4d coeffs;
-        bool use_current = false;
+    // Step 4: Recover missing lane from neighbor
+    if (detected[0] && !detected[1]) {
+        coeffs[1] = coeffs[0];
+        coeffs[1](0) -= kLaneWidth;
+        detected[1] = true;
+    } else if (!detected[0] && detected[1]) {
+        coeffs[0] = coeffs[1];
+        coeffs[0](0) += kLaneWidth;
+        detected[0] = true;
+    }
 
-        if (lane_centers[lane_id].size() >= static_cast<size_t>(kMinPointsForFit)) {
-            // 포인트가 충분하면 새로 피팅
-            coeffs = SolvePolynomial(lane_centers[lane_id]);
-            
-            // EMA 블렌딩: 이전 결과가 있으면 부드럽게 볔화
-            if (prev_lane_valid_[lane_id]) {
-                coeffs = kEmaAlpha * coeffs + (1.0 - kEmaAlpha) * prev_lane_coeffs_[lane_id];
-            }
-            
-            prev_lane_coeffs_[lane_id] = coeffs;
-            prev_lane_valid_[lane_id] = true;
-            use_current = true;
-        } else if (prev_lane_valid_[lane_id]) {
-            // 포인트 부족하면 이전 결과 사용
-            coeffs = prev_lane_coeffs_[lane_id];
-            use_current = true;
-        }
-
-        if (!use_current) {
-            continue;  // 이전 결과도 없으면 스킵
-        }
-
-        interface::PolyfitLane lane_poly;
-        lane_poly.frame_id = lane_points.frame_id;
-        lane_poly.id = "lane" + std::to_string(lane_id);
-        lane_poly.a0 = coeffs(0);
-        lane_poly.a1 = coeffs(1);
-        lane_poly.a2 = coeffs(2);
-        lane_poly.a3 = coeffs(3);
-        lanes.polyfitlanes.push_back(lane_poly);
+    // Step 5: Build output
+    for (int i = 0; i < kLaneCount; ++i) {
+        if (!detected[i]) continue;
+        interface::PolyfitLane lane;
+        lane.frame_id = lane_points.frame_id;
+        lane.id = (i == 0) ? "left_lane" : "right_lane";
+        lane.a0 = coeffs[i](0);
+        lane.a1 = coeffs[i](1);
+        lane.a2 = coeffs[i](2);
+        lane.a3 = coeffs[i](3);
+        lanes.polyfitlanes.push_back(lane);
     }
 
     return lanes;
 }
 
-interface::PolyfitLane PerceptionNode::FindDrivingWay(const interface::VehicleState &vehicle_state, const interface::PolyfitLanes& lanes) {
+
+//=============================================================================
+// Main Function 2: FindDrivingWay
+//=============================================================================
+interface::PolyfitLane PerceptionNode::FindDrivingWay(
+    const interface::VehicleState& vehicle_state, 
+    const interface::PolyfitLanes& lanes) {
     
     (void)vehicle_state;
+    
     interface::PolyfitLane driving_way;
     driving_way.frame_id = lanes.frame_id;
+    driving_way.id = "driving_way";
 
-    if (lanes.polyfitlanes.empty()) {
-        return driving_way;
-    }
-
-    double closest_left_dist = std::numeric_limits<double>::max();
-    double closest_right_dist = std::numeric_limits<double>::max();
-    Eigen::Vector4d left_coeffs = Eigen::Vector4d::Zero();
-    Eigen::Vector4d right_coeffs = Eigen::Vector4d::Zero();
-    bool has_left = false;
-    bool has_right = false;
+    Eigen::Vector4d left = Eigen::Vector4d::Zero();
+    Eigen::Vector4d right = Eigen::Vector4d::Zero();
+    bool has_left = false, has_right = false;
 
     for (const auto& lane : lanes.polyfitlanes) {
-        Eigen::Vector4d coeff(lane.a0, lane.a1, lane.a2, lane.a3);
-        double intercept = coeff(0);
-        double dist = std::abs(intercept);
-        if (intercept > 0.0 && dist < closest_left_dist) {
-            closest_left_dist = dist;
-            left_coeffs = coeff;
+        if (lane.id == "left_lane") {
+            left = Eigen::Vector4d(lane.a0, lane.a1, lane.a2, lane.a3);
             has_left = true;
-        } else if (intercept < 0.0 && dist < closest_right_dist) {
-            closest_right_dist = dist;
-            right_coeffs = coeff;
+        } else if (lane.id == "right_lane") {
+            right = Eigen::Vector4d(lane.a0, lane.a1, lane.a2, lane.a3);
             has_right = true;
         }
     }
 
-    if (!(has_left && has_right)) {
-        return driving_way;
+    Eigen::Vector4d center;
+    
+    if (has_left && has_right) {
+        center = (left + right) * 0.5;
+        prev_driving_way_coeffs_ = center;
+        prev_driving_way_valid_ = true;
+        prev_driving_way_frames_ = 0;
+    } else if (has_left) {
+        center = left;
+        center(0) -= kLaneWidth * 0.5;
+        prev_driving_way_coeffs_ = center;
+        prev_driving_way_valid_ = true;
+        prev_driving_way_frames_ = 0;
+    } else if (has_right) {
+        center = right;
+        center(0) += kLaneWidth * 0.5;
+        prev_driving_way_coeffs_ = center;
+        prev_driving_way_valid_ = true;
+        prev_driving_way_frames_ = 0;
+    } else {
+        if (prev_driving_way_valid_ && prev_driving_way_frames_ < kMaxFramesWithoutUpdate) {
+            center = prev_driving_way_coeffs_;
+            prev_driving_way_frames_++;
+        } else {
+            return driving_way;  // Zero coefficients
+        }
     }
 
-    Eigen::Vector4d center_coeffs = (left_coeffs + right_coeffs) * 0.5;
-    driving_way.id = "driving_way";
-    driving_way.a0 = center_coeffs(0);
-    driving_way.a1 = center_coeffs(1);
-    driving_way.a2 = center_coeffs(2);
-    driving_way.a3 = center_coeffs(3);
+    driving_way.a0 = center(0);
+    driving_way.a1 = center(1);
+    driving_way.a2 = center(2);
+    driving_way.a3 = center(3);
     
     return driving_way;
-}
-
-// 3차 다항식 피팅 (LSM)
-Eigen::Vector4d PerceptionNode::SolvePolynomial(const std::vector<Eigen::Vector2d>& pts) {
-    Eigen::Vector4d coeffs = Eigen::Vector4d::Zero();
-    if (pts.empty()) {
-        return coeffs;
-    }
-    Eigen::MatrixXd X(pts.size(), 4);
-    Eigen::VectorXd Y(pts.size());
-    for (size_t i = 0; i < pts.size(); ++i) {
-        double x = pts[i].x();
-        X(static_cast<int>(i), 0) = 1.0;
-        X(static_cast<int>(i), 1) = x;
-        X(static_cast<int>(i), 2) = x * x;
-        X(static_cast<int>(i), 3) = x * x * x;
-        Y(static_cast<int>(i)) = pts[i].y();
-    }
-    coeffs = X.colPivHouseholderQr().solve(Y);
-    return coeffs;
-}
-
-// RANSAC을 사용한 3차 다항식 피팅
-Eigen::Vector4d PerceptionNode::FitWithRansac(const std::vector<Eigen::Vector2d>& pts, int min_points_for_fit) {
-    if (pts.size() < static_cast<size_t>(min_points_for_fit)) {
-        return SolvePolynomial(pts);
-    }
-    std::mt19937 gen(std::random_device{}());
-    Eigen::Vector4d best_coeffs = Eigen::Vector4d::Zero();
-    int best_inliers = 0;
-    std::vector<int> best_inlier_indices;
-
-    std::uniform_int_distribution<> dis(0, static_cast<int>(pts.size()) - 1);
-    for (int iter = 0; iter < ransac_max_iterations; ++iter) {
-        std::set<int> sample_indices;
-        while (static_cast<int>(sample_indices.size()) < min_points_for_fit) {
-            sample_indices.insert(dis(gen));
-        }
-
-        Eigen::MatrixXd X_sample(min_points_for_fit, 4);
-        Eigen::VectorXd Y_sample(min_points_for_fit);
-        int idx = 0;
-        for (int sample_idx : sample_indices) {
-            double x = pts[static_cast<size_t>(sample_idx)].x();
-            X_sample(idx, 0) = 1.0;
-            X_sample(idx, 1) = x;
-            X_sample(idx, 2) = x * x;
-            X_sample(idx, 3) = x * x * x;
-            Y_sample(idx) = pts[static_cast<size_t>(sample_idx)].y();
-            ++idx;
-        }
-
-        Eigen::Vector4d coeffs = X_sample.colPivHouseholderQr().solve(Y_sample);
-
-        std::vector<int> inliers;
-        for (size_t i = 0; i < pts.size(); ++i) {
-            double x = pts[i].x();
-            double y_pred = coeffs(0) + coeffs(1) * x + coeffs(2) * x * x + coeffs(3) * x * x * x;
-            double error = std::abs(y_pred - pts[i].y());
-            if (error < ransac_inlier_threshold) {
-                inliers.push_back(static_cast<int>(i));
-            }
-        }
-
-        if (static_cast<int>(inliers.size()) > best_inliers) {
-            best_inliers = static_cast<int>(inliers.size());
-            best_coeffs = coeffs;
-            best_inlier_indices = inliers;
-        }
-
-        if (best_inliers > static_cast<int>(pts.size() * ransac_min_inlier_ratio)) {
-            break;
-        }
-    }
-
-    if (best_inliers >= min_points_for_fit && !best_inlier_indices.empty()) {
-        std::vector<Eigen::Vector2d> inlier_points;
-        inlier_points.reserve(best_inlier_indices.size());
-        for (int i : best_inlier_indices) {
-            inlier_points.push_back(pts[static_cast<size_t>(i)]);
-        }
-        return SolvePolynomial(inlier_points);
-    }
-
-    return SolvePolynomial(pts);
-}
-
-// y값을 기준으로 kmean을 수행하는 멤버 함수
-std::vector<std::pair<double, std::vector<double>>> PerceptionNode::Kmeans1D(
-    const std::vector<double>& values, int k_max, int max_iter) {
-    
-    std::vector<std::pair<double, std::vector<double>>> clusters;
-    if (values.empty()) {
-        return clusters;
-    }
-
-    int k = std::min(k_max, static_cast<int>(values.size())); // 현재 들어오는 차선의 개수로
-
-    std::vector<double> centers;
-    std::vector<double> sorted = values;
-    std::sort(sorted.begin(), sorted.end());
-    centers.reserve(k);
-    for (int i = 0; i < k; ++i) { // 정렬된 데이터를 k등분하여 각 구간의 중앙값을 초기 중심으로 선택한다.
-        size_t idx = static_cast<size_t>((sorted.size() - 1) * (2 * i + 1) / (2 * k));
-        centers.push_back(sorted[idx]);
-    }
-
-    std::vector<std::vector<double>> grouped(static_cast<size_t>(k)); // 최종 클러스터 결과 저장용
-    for (int iter = 0; iter < max_iter; ++iter) { // 최대 반복
-        // 1. 할당 (Assignment)
-        std::vector<std::vector<double>> new_grouped(static_cast<size_t>(k)); // 이번 반복의 클러스터
-        for (double v : values) { // 모든 값에 대해
-            int nearest = 0;
-            double best = std::abs(v - centers[0]); // 첫 번째 중심과의 거리
-            for (int c = 1; c < k; ++c) { // 나머지 중심들과 비교
-                double dist = std::abs(v - centers[c]);
-                if (dist < best) {
-                    best = dist;
-                    nearest = c; // 더 가까운 중심 발견
-                }
-            }
-            new_grouped[static_cast<size_t>(nearest)].push_back(v); // 가장 가까운 클러스터에 할당
-        }
-
-        // 2. 업데이트 (Update) + 수렴 체크
-        bool converged = true; // 수렴 가정
-        for (int c = 0; c < k; ++c) { // 빈 클러스터는 스킵
-            if (new_grouped[static_cast<size_t>(c)].empty()) {
-                continue;
-            }
-            double mean = std::accumulate(new_grouped[static_cast<size_t>(c)].begin(), 
-                                          new_grouped[static_cast<size_t>(c)].end(), 0.0) /
-                          new_grouped[static_cast<size_t>(c)].size(); // 새 중심 = 소속 값들의 평균
-            if (std::abs(mean - centers[c]) > 1e-3) { // 중심 이동량 체크
-                converged = false; // 아직 수렴 안됨
-            }
-            centers[c] = mean; // 중심 업데이트
-        }
-
-        // 3. 결과 저장 및 종료 조건
-        grouped.swap(new_grouped); // 새 결과를 저장
-        if (converged) {
-            break; // 모든 중심이 거의 안 움직이면 종료
-        }
-    }
-
-    clusters.reserve(static_cast<size_t>(k));
-    for (int c = 0; c < k; ++c) {
-        clusters.push_back({centers[c], grouped[static_cast<size_t>(c)]});
-    }
-    // Y값 기준으로 정렬하여 일관된 순서 보장
-    std::sort(clusters.begin(), clusters.end(), [](const auto& a, const auto& b) {
-        return a.first < b.first;
-    });
-    return clusters;
 }
 
 int main(int argc, char **argv) {

@@ -37,8 +37,6 @@ class PerceptionNode : public rclcpp::Node {
         //===============================================
         // Functions 
         //===============================================
-        void Init(const rclcpp::Time &current_time); 
-
         inline void CallbackVehicleState(const ad_msgs::msg::VehicleState::SharedPtr msg) {            
             std::lock_guard<std::mutex> lock(mutex_vehicle_state_);
             i_vehicle_state_ = ros2_bridge::GetVehicleState(*msg);
@@ -64,50 +62,28 @@ class PerceptionNode : public rclcpp::Node {
          * @return 주행 경로의 다항식 계수
          */
         interface::PolyfitLane FindDrivingWay(const interface::VehicleState &vehicle_state, const interface::PolyfitLanes& lanes);
-
-        /**
-         * @brief 1차원 K-means 클러스터링을 수행하는 함수
-         * @param values 클러스터링할 Y값들의 벡터
-         * @param k_max 최대 클러스터 개수
-         * @param max_iter 최대 반복 횟수
-         * @return 클러스터 결과 (중심값, 소속 값들) 쌍의 벡터
-         */
-        std::vector<std::pair<double, std::vector<double>>> Kmeans1D(
-            const std::vector<double>& values, int k_max, int max_iter);
-
-        /**
-         * @brief 3차 다항식 피팅을 수행하는 함수 (LSM)
-         * @param pts 피팅할 2D 점들
-         * @return 다항식 계수 (a0, a1, a2, a3)
-         */
-        Eigen::Vector4d SolvePolynomial(const std::vector<Eigen::Vector2d>& pts);
-
-        /**
-         * @brief RANSAC을 사용하여 3차 다항식 피팅을 수행하는 함수
-         * @param pts 피팅할 2D 점들
-         * @param min_points_for_fit 피팅에 필요한 최소 점 개수
-         * @return 다항식 계수 (a0, a1, a2, a3)
-         */
-        Eigen::Vector4d FitWithRansac(const std::vector<Eigen::Vector2d>& pts, int min_points_for_fit);
         
         //===============================================
         // Variables
         //===============================================
-        interface::VehicleCommand i_manual_input_;
         interface::VehicleState i_vehicle_state_;
         interface::Lane i_lane_points_;
-        
-        int ransac_max_iterations;
-        double ransac_inlier_threshold;
-        double ransac_min_inlier_ratio;
 
         // 이전 프레임 차선 결과 저장 (포인트 부족 시 유지용)
         static constexpr int kMinPointsForFit = 4;
         static constexpr double kEmaAlpha = 0.4;  // EMA 블렌딩 비율 (0.0~1.0, 높을수록 새 값 반영)
-        std::vector<Eigen::Vector4d> prev_lane_coeffs_{4, Eigen::Vector4d::Zero()};
-        std::vector<bool> prev_lane_valid_{4, false};
+        static constexpr int kLaneCount = 2;      // 검출 차선 수 (좌/우)
+        static constexpr int kMaxFramesWithoutUpdate = 5;  // 업데이트 없이 유지할 최대 프레임
+        
+        std::vector<Eigen::Vector4d> prev_lane_coeffs_{kLaneCount, Eigen::Vector4d::Zero()};
+        std::vector<bool> prev_lane_valid_{kLaneCount, false};
+        std::vector<int> prev_frames_without_update_{kLaneCount, 0};
+        
+        // 주행 경로 이전 프레임 저장
+        Eigen::Vector4d prev_driving_way_coeffs_ = Eigen::Vector4d::Zero();
+        bool prev_driving_way_valid_ = false;
+        int prev_driving_way_frames_ = 0;
 
-        std::mutex mutex_manual_input_;
         std::mutex mutex_vehicle_state_;
         std::mutex mutex_lane_points_;
         
@@ -115,14 +91,12 @@ class PerceptionNode : public rclcpp::Node {
 
         AutonomousDrivingConfig cfg_;
 
-        bool b_is_manual_input_ = false;
         bool b_is_simulator_on_ = false;
         bool b_is_lane_points_ = false;
 
         //===============================================
         // Subscriber
         //===============================================
-        rclcpp::Subscription<ad_msgs::msg::VehicleCommand>::SharedPtr s_manual_input_;
         rclcpp::Subscription<ad_msgs::msg::VehicleState>::SharedPtr s_vehicle_state_;
         rclcpp::Subscription<ad_msgs::msg::LanePointData>::SharedPtr s_lane_points_;
         
