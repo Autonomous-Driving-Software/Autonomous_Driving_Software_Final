@@ -12,8 +12,8 @@
     <!-- ROI Parameters (단위: m) -->
     <arg name="roi_front" default="15.0"/>
     <arg name="roi_rear" default="5.0"/>
-    <arg name="roi_left" default="8.0"/>
-    <arg name="roi_right" default="8.0"/>
+    <arg name="roi_left" default="3.0"/>
+    <arg name="roi_right" default="3.0"/>
  
     <!-- Perception Node -->
     <node pkg="autonomous_driving" exec="perception_node" name="perception_node" namespace="$(var ns1)" output="screen">
