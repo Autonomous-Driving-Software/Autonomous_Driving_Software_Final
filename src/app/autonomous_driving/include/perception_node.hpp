@@ -1,4 +1,3 @@
-
 #ifndef __PERCEPTION_NODE_HPP__
 #define __PERCEPTION_NODE_HPP__
 #pragma once
@@ -32,6 +31,12 @@ class PerceptionNode : public rclcpp::Node {
 
         void ProcessParams();
         void Run();
+        
+        struct Cluster {
+            double mean_y{0.0};
+            double mean_x{0.0};
+            std::vector<interface::Point2D> points;
+        };
 
     private:
 
@@ -52,7 +57,12 @@ class PerceptionNode : public rclcpp::Node {
         }
 
         // algorithm
-        interface::PolyfitLanes FindLanes(const interface::VehicleState &vehicle_state, const interface::Lane& lane_points);
+        interface::PolyfitLanes FindLanes(const interface::Lane& lane_points);
+        std::map<int, std::vector<interface::Point2D>> SliceByX(const interface::Lane& lane_points);
+        double SliceCenter(int idx) {
+            return min_x + (static_cast<double>(idx) + 0.5) * slice_width;
+        }
+        std::map<int, std::vector<PerceptionNode::Cluster>> ClusterLanePoints(std::map<int, std::vector<interface::Point2D>> slices);
         interface::PolyfitLane FindDrivingWay(const interface::PolyfitLanes& poly_lanes);
 
         //-- Variable ------------------------------------------------//
@@ -68,6 +78,15 @@ class PerceptionNode : public rclcpp::Node {
         // Mutex
         std::mutex mutex_vehicle_state_;
         std::mutex mutex_lane_points_;
+
+        double min_x;
+        double max_x;
+        const double slice_width = 0.5;                         // x 슬라이스 폭 [m]
+        const double cluster_threshold = 0.5;                   // 슬라이스 내 y 클러스터 간격 [m]
+        const double gate_width = 0.4;                          // 이전 프레임 기반 게이팅 폭 [m]
+        const double hist_bin_width = cluster_threshold * 0.25; // 빈 히스토그램 폭을 세밀하게 분리
+        const int empty_bin_gap = 1;                            // 연속 빈 bin 허용 개수
+        const int start_search_span = 3;                        // 슬라이스 범위 내에서 최초 씨드를 찾기 위한 탐색 범위 (앞/뒤 N슬라이스)
 
         //-- Output  ----------------------------------------------------//
 

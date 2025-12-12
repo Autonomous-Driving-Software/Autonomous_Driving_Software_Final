@@ -12,7 +12,7 @@ using namespace std;
 
 PerceptionNode::PerceptionNode(const std::string &node_name, const rclcpp::NodeOptions &options) : Node(node_name, options) {
 
-    //QoS init 
+    //QoS init
     auto qos_profile = rclcpp::QoS(rclcpp::KeepLast(10));
 
     //===============parameters===============
@@ -94,7 +94,7 @@ void PerceptionNode::Run() {
     //===================================================
 
     // (1) Find Polyfit Lanes
-    interface::PolyfitLanes poly_lanes = FindLanes(vehicle_state, lane_points);
+    interface::PolyfitLanes poly_lanes = FindLanes(lane_points);
 
     // (2) Find Driving Way
     interface::PolyfitLane driving_way = FindDrivingWay(poly_lanes);
@@ -111,116 +111,50 @@ void PerceptionNode::Run() {
 
 }
 
-interface::PolyfitLanes PerceptionNode::FindLanes(const interface::VehicleState &vehicle_state,
-                                                  const interface::Lane& lane_points) {
-    interface::PolyfitLanes poly_lanes_;
-    poly_lanes_.frame_id = lane_points.frame_id;
-    (void)vehicle_state;
+interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_points) {
+    
+    // Step 0. 사용할 변수들 초기화
+    interface::PolyfitLanes poly_lanes_;  // 최정 결과(lane fitting) 저장
+    poly_lanes_.frame_id = lane_points.frame_id;    
 
-    if (lane_points.point.empty()) {
+    if (lane_points.point.empty()) {      // 입력으로 들어오는 점이 아무것도 없으면 fitting 결과도 없이 내보내기
         return poly_lanes_;
     }
 
-    const double slice_width = 0.5;       // x 슬라이스 폭 [m]
-    const double cluster_threshold = 0.5; // 슬라이스 내 y 클러스터 간격 [m]
-    const double gate_width = 0.4;        // 이전 프레임 기반 게이팅 폭 [m]
+    // Step 1. x값을 기준으로 슬라이스 나누기
+    std::map<int, std::vector<interface::Point2D>> slices = SliceByX(lane_points);
 
-    double min_x = lane_points.point.front().x;
-    double max_x = lane_points.point.front().x;
-    for (const auto& pt : lane_points.point) {
-        min_x = std::min(min_x, pt.x);
-        max_x = std::max(max_x, pt.x);
-    }
-
-    std::map<int, std::vector<interface::Point2D>> slices;
-    for (const auto& pt : lane_points.point) {
-        int slice_idx = static_cast<int>(std::floor((pt.x - min_x) / slice_width));
-        slices[slice_idx].push_back(pt);
-    }
-
-    struct Cluster {
-        double mean_y{0.0};
-        double mean_x{0.0};
-        std::vector<interface::Point2D> points;
-    };
-
-    std::map<int, std::vector<Cluster>> clusters_by_slice;
-    auto slice_center = [&](int idx) {
-        return min_x + (static_cast<double>(idx) + 0.5) * slice_width;
-    };
-
-    for (const auto& entry : slices) {
-        int idx = entry.first;
-        const auto& pts = entry.second;
-        if (pts.empty()) continue;
-
-        std::vector<interface::Point2D> sorted_pts = pts;
-        std::sort(sorted_pts.begin(), sorted_pts.end(), [](const auto& a, const auto& b) {
-            return a.y < b.y;
-        });
-
-        std::vector<Cluster> clusters;
-        Cluster cur_cluster;
-        for (const auto& pt : sorted_pts) {
-            if (cur_cluster.points.empty()) {
-                cur_cluster.points.push_back(pt);
-                cur_cluster.mean_y = pt.y;
-                cur_cluster.mean_x = pt.x;
-                continue;
-            }
-
-            double y_diff = std::abs(pt.y - cur_cluster.mean_y);
-            if (y_diff <= cluster_threshold) {
-                cur_cluster.points.push_back(pt);
-                cur_cluster.mean_y = (cur_cluster.mean_y * (cur_cluster.points.size() - 1) + pt.y) / cur_cluster.points.size();
-                cur_cluster.mean_x = (cur_cluster.mean_x * (cur_cluster.points.size() - 1) + pt.x) / cur_cluster.points.size();
-            } else {
-                cur_cluster.mean_x = slice_center(idx);
-                clusters.push_back(cur_cluster);
-                cur_cluster.points.clear();
-                cur_cluster.points.push_back(pt);
-                cur_cluster.mean_y = pt.y;
-                cur_cluster.mean_x = pt.x;
-            }
-        }
-
-        if (!cur_cluster.points.empty()) {
-            cur_cluster.mean_x = slice_center(idx);
-            clusters.push_back(cur_cluster);
-        }
-
-        clusters_by_slice[idx] = clusters;
-    }
-
-    if (clusters_by_slice.empty()) {
+    // Step 2. 각 슬라이스 별로 차선 클러스터 찾기 
+    std::map<int, std::vector<PerceptionNode::Cluster>> clusters_by_slice = ClusterLanePoints(slices);
+ 
+    if (clusters_by_slice.empty()) {     // 클러스터링이 아무것도 안되었다면 fitting 결과도 없이 내보내기
         return poly_lanes_;
     }
 
-    // ego에 가장 가까운 슬라이스 선택
+    // Step 3. 슬라이스 별로 차선 클러스터를 이어주기 
+    // 3-1. ego에 가장 가까운 슬라이스 선택
     std::vector<int> slice_indices;
-    for (const auto& kv : clusters_by_slice) slice_indices.push_back(kv.first);
+    for (const auto& kv : clusters_by_slice) slice_indices.push_back(kv.first); // 슬라이스 인덱스들을 따로 배열에 저장
 
-    int start_idx = slice_indices.front();
-    double best_dist = std::abs(slice_center(start_idx));
-    for (int idx : slice_indices) {
-        double dist = std::abs(slice_center(idx));
-        if (dist < best_dist) {
-            best_dist = dist;
+    int start_idx = slice_indices.front();                  
+    double best_dist = std::abs(SliceCenter(start_idx)); 
+    for (int idx : slice_indices) {                         
+        double dist = std::abs(SliceCenter(idx));
+        if (dist < best_dist) {       // 자차 기준 슬라이스 중심 거리를 계산해서 가장 가까운 슬라이스 인덱스를 찾는다.
+            best_dist = dist;   
             start_idx = idx;
         }
     }
 
-    auto& start_clusters = clusters_by_slice[start_idx];
-    Cluster* left_cluster = nullptr;
-    Cluster* right_cluster = nullptr;
+    auto& start_clusters = clusters_by_slice[start_idx];  // 자차에 가까운 slice를 시작점으로 지정
+    Cluster* left_cluster = nullptr;                      // 왼쪽 차선 
+    Cluster* right_cluster = nullptr;                     // 오른쪽 차선 
 
-    auto eval_lane = [](const interface::PolyfitLane& lane, double x) {
+    auto eval_lane = [](const interface::PolyfitLane& lane, double x) { // function:찾은 계수로 x값으로 y값 위치 계산
         return lane.a0 + lane.a1 * x + lane.a2 * x * x + lane.a3 * x * x * x;
     };
 
-    // 슬라이스 범위 내에서 최초 씨드를 찾기 위한 탐색 범위 (앞/뒤 N슬라이스)
-    const int start_search_span = 3;
-
+    // 3-2. 슬라이스 범위 내에서 최초 씨드를 찾기 위한 탐색 범위 (앞/뒤 N슬라이스)
     auto select_start_cluster = [&](bool is_left, double gate_center) -> Cluster* {
         Cluster* best_gate = nullptr;
         double best_gate_diff = std::numeric_limits<double>::max();
@@ -234,7 +168,7 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::VehicleState 
             if (idx < slice_indices.front() || idx > slice_indices.back()) continue;
             auto it = clusters_by_slice.find(idx);
             if (it == clusters_by_slice.end()) continue;
-            double x_center = slice_center(idx);
+            double x_center = SliceCenter(idx);
             double gate = std::isfinite(gate_center) ? gate_center : std::numeric_limits<double>::quiet_NaN();
 
             for (auto& cluster : it->second) {
@@ -263,7 +197,7 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::VehicleState 
         return (best_gate != nullptr) ? best_gate : best_fallback;
     };
 
-    double start_x_center = slice_center(start_idx);
+    double start_x_center = SliceCenter(start_idx);
     double left_gate_center = (has_prev_left_lane_) ? eval_lane(prev_left_lane_, start_x_center) : std::numeric_limits<double>::quiet_NaN();
     double right_gate_center = (has_prev_right_lane_) ? eval_lane(prev_right_lane_, start_x_center) : std::numeric_limits<double>::quiet_NaN();
 
@@ -293,7 +227,7 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::VehicleState 
     for (size_t i = start_pos + 1; i < slice_indices.size(); ++i) {
         int idx = slice_indices[i];
         auto& clusters = clusters_by_slice[idx];
-        double x_center = slice_center(idx);
+        double x_center = SliceCenter(idx);
         double left_gate = (has_prev_left_lane_) ? eval_lane(prev_left_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
         double right_gate = (has_prev_right_lane_) ? eval_lane(prev_right_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
 
@@ -346,7 +280,7 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::VehicleState 
     for (int i = static_cast<int>(start_pos) - 1; i >= 0; --i) {
         int idx = slice_indices[static_cast<size_t>(i)];
         auto& clusters = clusters_by_slice[idx];
-        double x_center = slice_center(idx);
+        double x_center = SliceCenter(idx);
         double left_gate = (has_prev_left_lane_) ? eval_lane(prev_left_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
         double right_gate = (has_prev_right_lane_) ? eval_lane(prev_right_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
 
@@ -440,6 +374,102 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::VehicleState 
     return poly_lanes_;
 }
 
+std::map<int, std::vector<interface::Point2D>> PerceptionNode::SliceByX(const interface::Lane& lane_points){
+
+    std::map<int, std::vector<interface::Point2D>> slices;
+
+    // 1-1. 들어온 lane_points의 x 최대 최소값을 구한다
+    min_x = lane_points.point.front().x;
+    max_x = lane_points.point.front().x;
+    for (const auto& pt : lane_points.point) {
+        min_x = std::min(min_x, pt.x);
+        max_x = std::max(max_x, pt.x);
+    }
+
+    // 1-2. 미리 설정한 슬라이스 폭으로 들어오는 lane points들을 슬라이스별로 나누어서 slice index 부여.
+    for (const auto& pt : lane_points.point) {
+        int slice_idx = static_cast<int>(std::floor((pt.x - min_x) / slice_width));   
+        slices[slice_idx].push_back(pt);
+    }
+
+    return slices;
+}
+
+std::map<int, std::vector<Cluster>> PerceptionNode::ClusterLanePoints(std::map<int, std::vector<interface::Point2D>> slices){
+    
+    // 슬라이스 별로 차선이 저장된 cluster 들의 모임
+    std::map<int, std::vector<Cluster>> clusters_by_slice;  
+
+    if (hist_bin_width <= 0.0) {  // 히스토그램 bin의 너비가 0이면 
+        return clusters_by_slice;
+    }
+
+    // slice 별로 차선의 Cluster 찾기
+    for (const auto& entry : slices) {
+        int idx = entry.first;                  // slice index
+        const auto& pts = entry.second;         // slice points
+        if (pts.empty()) continue;              // 현재 슬라이스의 포인트가 없다면 다음 슬라이스로 
+
+        std::vector<interface::Point2D> sorted_pts = pts;   // 포인트를 y값을 기준으로 정렬
+        std::sort(sorted_pts.begin(), sorted_pts.end(), [](const auto& a, const auto& b) {
+            return a.y < b.y;
+        });
+
+        // 히스토그램 준비
+        double min_y = sorted_pts.front().y;
+        double max_y = sorted_pts.back().y;
+        int bin_count = std::max(1, static_cast<int>(std::ceil((max_y - min_y) / hist_bin_width)));
+        std::vector<std::vector<size_t>> bins(bin_count);
+        for (size_t i = 0; i < sorted_pts.size(); ++i) {
+            int bin_idx = std::min(bin_count - 1, static_cast<int>(std::floor((sorted_pts[i].y - min_y) / hist_bin_width)));
+            bins[bin_idx].push_back(i);
+        }
+
+        // 히스토그램을 훑으면서 빈 구간을 기준으로 클러스터 분리
+        std::vector<Cluster> clusters;          
+        Cluster cur_cluster;
+        double sum_y = 0.0;
+        double sum_x = 0.0;
+        int empty_run = 0;
+
+        auto add_point = [&](const interface::Point2D& pt) {
+            cur_cluster.points.push_back(pt);
+            sum_y += pt.y;
+            sum_x += pt.x;
+        };
+
+        auto flush_cluster = [&]() {
+            if (cur_cluster.points.empty()) return;
+            double n = static_cast<double>(cur_cluster.points.size());
+            cur_cluster.mean_y = sum_y / n;
+            cur_cluster.mean_x = sum_x / n;
+            clusters.push_back(cur_cluster);
+            cur_cluster = Cluster{};
+            sum_y = 0.0;
+            sum_x = 0.0;
+        };
+
+        for (int bin_idx = 0; bin_idx < bin_count; ++bin_idx) {
+            const auto& bin_points_idx = bins[bin_idx];
+            if (!bin_points_idx.empty()) {
+                empty_run = 0;
+                for (size_t point_idx : bin_points_idx) {
+                    add_point(sorted_pts[point_idx]);
+                }
+            } else {
+                ++empty_run;
+                if (empty_run > empty_bin_gap) {
+                    flush_cluster();
+                }
+            }
+        }
+
+        flush_cluster();
+        clusters_by_slice[idx] = clusters;
+    }
+
+    return clusters_by_slice;
+}
 
 interface::PolyfitLane PerceptionNode::FindDrivingWay(const interface::PolyfitLanes& poly_lanes) {
     
