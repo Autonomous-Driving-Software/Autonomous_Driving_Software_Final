@@ -95,10 +95,10 @@ class PerceptionNode : public rclcpp::Node {
         rclcpp::Publisher<ad_msgs::msg::PolyfitLaneData>::SharedPtr p_driving_way_;
 
         // Previous frame lanes for gating
-        bool has_prev_left_lane_{false};
-        bool has_prev_right_lane_{false};
-        interface::PolyfitLane prev_left_lane_;
-        interface::PolyfitLane prev_right_lane_;
+        bool has_prev_left_lane_{false};            // 이전 프레임에서 왼쪽 차선이 유효하게 추정되었는지
+        bool has_prev_right_lane_{false};           // 이전 프레임에서 오른쪽 차선이 유효하게 추정되었는지 
+        interface::PolyfitLane prev_left_lane_;     // 현재 프레임의 왼쪽 차선을 찾을 때 이전 프레임의 결과
+        interface::PolyfitLane prev_right_lane_;    // 현재 프레임의 오른쪽 차선을 찾을 때 이전 프레임의 결과
 
         // Previous driving way for smoothing
         bool has_prev_driving_way_{false};
