@@ -505,7 +505,7 @@ double PlanningNode::VelocityPlanning(const interface::VehicleState &vehicle_sta
         if (v_rel > 0 && s_to_buffer > 0) {                 // 추월 상황 (ego가 더 빠름) - TTC 계산
             double ttc = s_to_buffer / v_rel;
 
-            if (ttc < 5.0) {                                // ttc<5초: 앞차 속도로 감속
+            if (ttc < 10.0) {                                // ttc<5초: 앞차 속도로 감속
                 target_speed = std::min(v_lead, target_speed);
             } else {
                 target_speed = reference_speed;             // 안전하면 기본 속도 유지
@@ -768,8 +768,8 @@ interface::PolyfitLane PlanningNode::LaneChange(const interface::VehicleState &v
         
         // 장애물까지 거리를 sf로 사용 (단, 최소 거리 보장)
         double obstacle_s = ctx.static_object_s;    // = frenet.s
-        const double LANE_CHANGE_MARGIN = 2.0;  // 최소 차선 변경 거리
-        double sf = obstacle_s - LANE_CHANGE_MARGIN;  // 장애물 2m 전에 완료
+        const double LANE_CHANGE_MARGIN = 1.0;  // 최소 차선 변경 거리
+        double sf = obstacle_s - LANE_CHANGE_MARGIN;  // 장애물 1m 전에 완료
 
         RCLCPP_INFO(this->get_logger(), 
             "[LaneChange] START! Frenet: d0=%.1f → df=%.1f, sf=%.1f m (obstacle_s=%.1f)",
@@ -779,10 +779,10 @@ interface::PolyfitLane PlanningNode::LaneChange(const interface::VehicleState &v
         // 3차 다항식 계수 해석적 계산 (Frenet d(s))
         // d(s) = a0 + a1*s + a2*s² + a3*s³
         //=============================================================
-        double frenet_a0 = d0;
-        double frenet_a1 = 0.0;  // d'(0) = 0
-        double frenet_a2 = 3.0 * (df - d0) / (sf * sf);
-        double frenet_a3 = -2.0 * (df - d0) / (sf * sf * sf);
+        double frenet_a0 = d0;                                          // d(0) = d0
+        double frenet_a1 = 0.0;  // d'(0) = 0                           // d'(0) = 0 
+        double frenet_a2 = 3.0 * (df - d0) / (sf * sf);                 // d(sf) = df    
+        double frenet_a3 = -2.0 * (df - d0) / (sf * sf * sf);           // d'(sf) = 0
         
         //=============================================================
         // Frenet 경로점 생성 → Local → Global 변환하여 저장
@@ -829,11 +829,13 @@ interface::PolyfitLane PlanningNode::LaneChange(const interface::VehicleState &v
     //=================================================================
     std::vector<double> x_local_points, y_local_points;
     
+    const double ROI_MAX = 15.0; // 15m 이내 점들만 사용
+
     for (const auto& [gx, gy] : lane_change_path_global_) {
         auto [lx, ly] = GlobalToLocal(vehicle_state, gx, gy);
         
         // 차량 앞쪽 점만 사용 (x > -1m)
-        if (lx > -1.0) {
+        if (lx > -1.0 && lx < ROI_MAX) {
             x_local_points.push_back(lx);
             y_local_points.push_back(ly);
         }
