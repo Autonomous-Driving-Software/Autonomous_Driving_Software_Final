@@ -81,12 +81,12 @@ class PerceptionNode : public rclcpp::Node {
 
         double min_x;
         double max_x;
-        const double slice_width = 0.5;                         // x 슬라이스 폭 [m]
-        const double cluster_threshold = 0.5;                   // 슬라이스 내 y 클러스터 간격 [m]
-        const double gate_width = 0.4;                          // 이전 프레임 기반 게이팅 폭 [m]
+        const double slice_width = 0.2;                         // x 슬라이스 폭 [m]
+        const double cluster_threshold = 0.2;                   // 슬라이스 내 y 클러스터 간격 [m]
+        const double gate_width = 0.2;                          // 이전 프레임 기반 게이팅 폭 [m]
         const double hist_bin_width = cluster_threshold * 0.25; // 빈 히스토그램 폭을 세밀하게 분리
         const int empty_bin_gap = 1;                            // 연속 빈 bin 허용 개수
-        const int start_search_span = 3;                        // 슬라이스 범위 내에서 최초 씨드를 찾기 위한 탐색 범위 (앞/뒤 N슬라이스)
+        const int start_search_span = 5;                        // 슬라이스 범위 내에서 최초 씨드를 찾기 위한 탐색 범위 (앞/뒤 N슬라이스)
 
         //-- Output  ----------------------------------------------------//
 

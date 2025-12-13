@@ -236,8 +236,8 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
         int idx = slice_indices[i]; 
         auto& clusters = clusters_by_slice[idx];
         double x_center = SliceCenter(idx);
-        double left_gate = (has_prev_left_lane_) ? eval_lane(prev_left_lane_, x_center) : std::numeric_limits<double>::quiet_NaN(); // 이전 프레임에서 구한 왼쪽 차선의 다항식 계수를 현재 위치 x에 대입하여 예측한 y값
-        double right_gate = (has_prev_right_lane_) ? eval_lane(prev_right_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
+        double left_gate = (has_prev_left_lane_) ? EvalLane(prev_left_lane_, x_center) : std::numeric_limits<double>::quiet_NaN(); // 이전 프레임에서 구한 왼쪽 차선의 다항식 계수를 현재 위치 x에 대입하여 예측한 y값
+        double right_gate = (has_prev_right_lane_) ? EvalLane(prev_right_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
 
         if (left_cluster != nullptr) {  // 왼쪽 차선 후보가 존재할때 
             const Cluster* best = nullptr;  
@@ -287,8 +287,8 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
         int idx = slice_indices[static_cast<size_t>(i)];
         auto& clusters = clusters_by_slice[idx];
         double x_center = SliceCenter(idx);
-        double left_gate = (has_prev_left_lane_) ? eval_lane(prev_left_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
-        double right_gate = (has_prev_right_lane_) ? eval_lane(prev_right_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
+        double left_gate = (has_prev_left_lane_) ? EvalLane(prev_left_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
+        double right_gate = (has_prev_right_lane_) ? EvalLane(prev_right_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
 
         if (left_cluster != nullptr) {
             const Cluster* best = nullptr;
@@ -403,10 +403,10 @@ std::map<int, std::vector<interface::Point2D>> PerceptionNode::SliceByX(const in
     return slices;
 }
 
-std::map<int, std::vector<Cluster>> PerceptionNode::ClusterLanePoints(std::map<int, std::vector<interface::Point2D>> slices){
+std::map<int, std::vector<PerceptionNode::Cluster>> PerceptionNode::ClusterLanePoints(std::map<int, std::vector<interface::Point2D>> slices){
     
     // 슬라이스 별로 차선이 저장된 cluster 들의 모임
-    std::map<int, std::vector<Cluster>> clusters_by_slice;  
+    std::map<int, std::vector<PerceptionNode::Cluster>> clusters_by_slice;  
 
     if (hist_bin_width <= 0.0) {  // 히스토그램 bin의 너비가 0이면 
         return clusters_by_slice;
@@ -434,8 +434,8 @@ std::map<int, std::vector<Cluster>> PerceptionNode::ClusterLanePoints(std::map<i
         }
 
         // 히스토그램을 훑으면서 빈 구간을 기준으로 클러스터 분리
-        std::vector<Cluster> clusters;          
-        Cluster cur_cluster;
+        std::vector<PerceptionNode::Cluster> clusters;          
+        PerceptionNode::Cluster cur_cluster;
         double sum_y = 0.0;
         double sum_x = 0.0;
         int empty_run = 0;
@@ -477,15 +477,6 @@ std::map<int, std::vector<Cluster>> PerceptionNode::ClusterLanePoints(std::map<i
     }
 
     return clusters_by_slice;
-}
-
-std::vector<interface::Point2D> PerceptionNode::MatchClusters(const std::vector<>){
-    std::vector<interface::Point2D> lanes;
-
-
-
-
-    return lanes
 }
 
 interface::PolyfitLane PerceptionNode::FindDrivingWay(const interface::PolyfitLanes& poly_lanes) {
