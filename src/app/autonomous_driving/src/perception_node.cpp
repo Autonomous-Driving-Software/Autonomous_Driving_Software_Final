@@ -27,6 +27,9 @@ PerceptionNode::PerceptionNode(const std::string &node_name, const rclcpp::NodeO
     this->declare_parameter("perception/hist_bin_width_scale", 0.25); // hist_bin_width = cluster_threshold * scale
     this->declare_parameter("perception/side_lane_window", side_lane_window);
     this->declare_parameter("perception/lane_disconnect_gap", lane_disconnect_gap);
+    this->declare_parameter("perception/fit_near_sigma", fit_near_sigma);
+    this->declare_parameter("perception/coeff_smooth_alpha", coeff_smooth_alpha);
+    this->declare_parameter("perception/min_fit_points", min_fit_points);
 
     ProcessParams();
 
@@ -75,6 +78,9 @@ void PerceptionNode::ProcessParams() {
     hist_bin_width = cluster_threshold * hist_scale;
     this->get_parameter("perception/side_lane_window", side_lane_window);
     this->get_parameter("perception/lane_disconnect_gap", lane_disconnect_gap);
+    this->get_parameter("perception/fit_near_sigma", fit_near_sigma);
+    this->get_parameter("perception/coeff_smooth_alpha", coeff_smooth_alpha);
+    this->get_parameter("perception/min_fit_points", min_fit_points);
 }
 
 void PerceptionNode::Run() {
@@ -260,10 +266,11 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
     // ----------------------------------------------------------------------------------
 
     auto fit_lane = [&](const std::vector<interface::Point2D>& points, const std::string& id, interface::PolyfitLane& out_lane) -> bool {
-        if (points.size() < 4) return false;
+        if (static_cast<int>(points.size()) < min_fit_points) return false; // 점이 적으면 피팅 포기
 
         Eigen::MatrixXd X(points.size(), 4);
         Eigen::VectorXd Y(points.size());
+        Eigen::VectorXd W(points.size());
 
         for (size_t i = 0; i < points.size(); ++i) {
             double x = points[i].x;
@@ -272,9 +279,18 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
             X(i, 2) = x * x;
             X(i, 3) = x * x * x;
             Y(i) = points[i].y;
+            double w = std::exp(-std::abs(x) / std::max(1e-3, fit_near_sigma));
+            W(i) = std::sqrt(w); // sqrt weight for premultiplying
         }
 
-        Eigen::VectorXd coeffs = X.colPivHouseholderQr().solve(Y);
+        Eigen::MatrixXd Xw = X;
+        Eigen::VectorXd Yw = Y;
+        for (size_t i = 0; i < points.size(); ++i) {
+            Xw.row(i) *= W(i);
+            Yw(i) *= W(i);
+        }
+
+        Eigen::VectorXd coeffs = Xw.colPivHouseholderQr().solve(Yw);
 
         interface::PolyfitLane lane;
         lane.frame_id = lane_points.frame_id;
@@ -283,6 +299,18 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
         lane.a1 = coeffs(1);
         lane.a2 = coeffs(2);
         lane.a3 = coeffs(3);
+
+        // 계수 스무딩: 이전 트랙이 있으면 저역통과
+        int lane_idx = -1;
+        if (id == "1") lane_idx = 0;
+        else if (id == "2") lane_idx = 1;
+        if (lane_idx >= 0 && has_prev_lane_id_[lane_idx]) {
+            double alpha = coeff_smooth_alpha;
+            lane.a0 = alpha * lane.a0 + (1.0 - alpha) * prev_lane_id_[lane_idx].a0;
+            lane.a1 = alpha * lane.a1 + (1.0 - alpha) * prev_lane_id_[lane_idx].a1;
+            lane.a2 = alpha * lane.a2 + (1.0 - alpha) * prev_lane_id_[lane_idx].a2;
+            lane.a3 = alpha * lane.a3 + (1.0 - alpha) * prev_lane_id_[lane_idx].a3;
+        }
 
         out_lane = lane;
         poly_lanes_.polyfitlanes.push_back(lane);
@@ -297,6 +325,8 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
             prev_lane_id_[i] = lane;
             has_prev_lane_id_[i] = true;
             poly_lanes_.polyfitlanes.push_back(lane);
+        } else {
+            has_prev_lane_id_[i] = false;
         }
     }
 

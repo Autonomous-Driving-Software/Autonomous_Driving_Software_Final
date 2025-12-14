@@ -90,6 +90,9 @@ class PerceptionNode : public rclcpp::Node {
         double hist_bin_width = cluster_threshold * 0.25; // 빈 히스토그램 폭을 세밀하게 분리
         double side_lane_window = 0.5;                    // 동일 측면에서 다른 차선으로 점프하지 않도록 허용하는 y 거리 [m]
         double lane_disconnect_gap = 0.6;                 // 차선 포인트가 끊길 때 옆 차선으로 점프하지 않도록 허용하는 최대 y 이격
+        double fit_near_sigma = 5.0;                      // 근거리 가중치 감쇠율 [m]
+        double coeff_smooth_alpha = 0.3;                  // 계수 스무딩 계수 (현재/이전 가중 평균)
+        int min_fit_points = 8;                           // 차선 피팅에 필요한 최소 포인트 수
 
         //-- Output  ----------------------------------------------------//
 
