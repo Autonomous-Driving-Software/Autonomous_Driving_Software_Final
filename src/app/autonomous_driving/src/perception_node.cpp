@@ -126,11 +126,11 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
 
     std::map<int, std::vector<interface::Point2D>> slices = SliceByX(lane_points);
 
-
-    // --------------------------------------------------
+    // ----------------------------------------------------------------------------------
     // STEP 2. 각 슬라이스 별로 차선 클러스터 찾기
-    // --------------------------------------------------
-    std::map<int, std::vector<PerceptionNode::Cluster>> clusters_by_slice = ClusterLanePoints(slices);
+    // ----------------------------------------------------------------------------------
+
+    std::map<int, std::vector<PerceptionNode::Cluster>> clusters_by_slice = FindCluster(slices); // 슬라이스 인덱스 별로 찾은 클러스터들 저장
  
     if (clusters_by_slice.empty()) {     // 클러스터링이 아무것도 안되었다면 fitting 결과도 없이 내보내기
         return poly_lanes_;
@@ -141,10 +141,10 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
     // ----------------------------------------------------------------------------------
 
     // [3-1] ego에 가장 가까운 슬라이스 선택 
-    std::vector<int> slice_indices;
-    for (const auto& kv : clusters_by_slice) slice_indices.push_back(kv.first); // 슬라이스 인덱스들을 따로 배열에 저장
+    std::vector<int> slice_index_array; // slice 인덱스들만 따로 배열(slice_index_array)에 저장
+    for (const auto& kv : clusters_by_slice) slice_index_array.push_back(kv.first); // 슬라이스 인덱스들을 따로 배열에 저장
 
-    int start_idx = slice_indices.front();                  
+    int start_idx = slice_index_array.front();                  
     double best_dist = std::abs(SliceCenter(start_idx)); 
     for (int idx : slice_indices) {                         
         double dist = std::abs(SliceCenter(idx));
@@ -158,9 +158,7 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
     Cluster* left_cluster = nullptr;                      // 왼쪽 차선 
     Cluster* right_cluster = nullptr;                     // 오른쪽 차선 
 
-    auto EvalLane = [](const interface::PolyfitLane& lane, double x) { // function:찾은 계수로 x값으로 y값 위치 계산
-        return lane.a0 + lane.a1 * x + lane.a2 * x * x + lane.a3 * x * x * x;
-    };
+
 
     // [3-2] 슬라이스 범위 내에서 최초 씨드를 찾기 위한 탐색 범위 (앞/뒤 N슬라이스) 
     auto SelectStartCluster = [&](bool is_left, double gate_center) -> Cluster* { 
@@ -236,15 +234,15 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
         int idx = slice_indices[i]; 
         auto& clusters = clusters_by_slice[idx];
         double x_center = SliceCenter(idx);
-        double left_gate = (has_prev_left_lane_) ? EvalLane(prev_left_lane_, x_center) : std::numeric_limits<double>::quiet_NaN(); // 이전 프레임에서 구한 왼쪽 차선의 다항식 계수를 현재 위치 x에 대입하여 예측한 y값
-        double right_gate = (has_prev_right_lane_) ? EvalLane(prev_right_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
+        double left_gate = (has_prev_left_lane_) ? eval_lane(prev_left_lane_, x_center) : std::numeric_limits<double>::quiet_NaN(); // 이전 프레임에서 구한 왼쪽 차선의 다항식 계수를 현재 위치 x에 대
+        double right_gate = (has_prev_right_lane_) ? eval_lane(prev_right_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
 
         if (left_cluster != nullptr) {  // 왼쪽 차선 후보가 존재할때 
             const Cluster* best = nullptr;  
             double best_diff = std::numeric_limits<double>::max();
             for (const auto& cluster : clusters) {  // 현재 슬라이스의 클러스터를 순회하면서 
-                double diff_target = std::abs(cluster.mean_y - left_target_forward); // 이전에 추적한 왼쪽 차선과 현재 클러스터의 오프셋
-                double diff_gate = std::isfinite(left_gate) ? std::abs(cluster.mean_y - left_gate) : diff_target; // 이전 프레임의 예측 차선
+                double diff_target = std::abs(cluster.mean_y - left_target_forward); // 이전 슬라이스에서 추적한 차선 중심과 현재 클러스터 중심의 y값 차이
+                double diff_gate = std::isfinite(left_gate) ? std::abs(cluster.mean_y - left_gate) : diff_target; // 이전 프레임의 예측 차선이 있으면 그 예측값과의 차이, 없으면 단순히 이전 추적값과의 차이
                 bool pass_gate = std::isfinite(left_gate) ? (diff_gate <= gate_width) : true;
 
                 double metric = pass_gate ? diff_gate : diff_target;
@@ -287,8 +285,8 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
         int idx = slice_indices[static_cast<size_t>(i)];
         auto& clusters = clusters_by_slice[idx];
         double x_center = SliceCenter(idx);
-        double left_gate = (has_prev_left_lane_) ? EvalLane(prev_left_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
-        double right_gate = (has_prev_right_lane_) ? EvalLane(prev_right_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
+        double left_gate = (has_prev_left_lane_) ? eval_lane(prev_left_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
+        double right_gate = (has_prev_right_lane_) ? eval_lane(prev_right_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
 
         if (left_cluster != nullptr) {
             const Cluster* best = nullptr;
@@ -382,11 +380,14 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
     return poly_lanes_;
 }
 
+/** @brief X축 방향으로 slice 별로 points들을 나눠주는 함수
+ *  @param lane_points
+ *  @return 인덱스 번호와 lane_points로 이루어진 slices map */
 std::map<int, std::vector<interface::Point2D>> PerceptionNode::SliceByX(const interface::Lane& lane_points){
 
     std::map<int, std::vector<interface::Point2D>> slices;
 
-    // 1-1. 들어온 lane_points의 x 최대 최소값을 구한다
+    // 1. 들어온 lane_points의 x 최대 최소값을 구한다
     min_x = lane_points.point.front().x;
     max_x = lane_points.point.front().x;
     for (const auto& pt : lane_points.point) {
@@ -394,21 +395,21 @@ std::map<int, std::vector<interface::Point2D>> PerceptionNode::SliceByX(const in
         max_x = std::max(max_x, pt.x);
     }
 
-    // 1-2. 미리 설정한 슬라이스 폭으로 들어오는 lane points들을 슬라이스별로 나누어서 slice index 부여.
+    // 2. 미리 설정한 슬라이스 폭으로 들어오는 lane points들을 슬라이스별로 나누어서 slice index 부여.
     for (const auto& pt : lane_points.point) {
         int slice_idx = static_cast<int>(std::floor((pt.x - min_x) / slice_width));   
         slices[slice_idx].push_back(pt);
     }
-
     return slices;
 }
 
-std::map<int, std::vector<PerceptionNode::Cluster>> PerceptionNode::ClusterLanePoints(std::map<int, std::vector<interface::Point2D>> slices){
+std::map<int, std::vector<PerceptionNode::Cluster>> PerceptionNode::FindCluster(std::map<int, std::vector<interface::Point2D>> slices){
     
     // 슬라이스 별로 차선이 저장된 cluster 들의 모임
     std::map<int, std::vector<PerceptionNode::Cluster>> clusters_by_slice;  
 
-    if (hist_bin_width <= 0.0) {  // 히스토그램 bin의 너비가 0이면 
+    if (hist_bin_width <= 0.0) {  // 히스토그램 bin의 너비가 0이면 이후 계산하지 않음
+        RCLCPP_WARN(this->get_logger(), "[FindCluster] hist_bin_width <= 0.0: 클러스터링을 수행하지 않습니다.");
         return clusters_by_slice;
     }
 
@@ -427,25 +428,22 @@ std::map<int, std::vector<PerceptionNode::Cluster>> PerceptionNode::ClusterLaneP
         double min_y = sorted_pts.front().y;
         double max_y = sorted_pts.back().y;
         int bin_count = std::max(1, static_cast<int>(std::ceil((max_y - min_y) / hist_bin_width)));
-        std::vector<std::vector<size_t>> bins(bin_count);
+        std::vector<std::vector<size_t>> bins(bin_count);   // 각 빈에 속하는 점들의 인덱스 정수값을 저장한다.
         for (size_t i = 0; i < sorted_pts.size(); ++i) {
             int bin_idx = std::min(bin_count - 1, static_cast<int>(std::floor((sorted_pts[i].y - min_y) / hist_bin_width)));
             bins[bin_idx].push_back(i);
         }
 
         // 히스토그램을 훑으면서 빈 구간을 기준으로 클러스터 분리
-        std::vector<PerceptionNode::Cluster> clusters;          
-        PerceptionNode::Cluster cur_cluster;
-        double sum_y = 0.0;
-        double sum_x = 0.0;
-        int empty_run = 0;
+        std::vector<Cluster> clusters;
+        Cluster cur_cluster;
+        double sum_y = 0.0, sum_x = 0.0;
 
         auto add_point = [&](const interface::Point2D& pt) {
             cur_cluster.points.push_back(pt);
             sum_y += pt.y;
             sum_x += pt.x;
         };
-
         auto flush_cluster = [&]() {
             if (cur_cluster.points.empty()) return;
             double n = static_cast<double>(cur_cluster.points.size());
@@ -453,28 +451,22 @@ std::map<int, std::vector<PerceptionNode::Cluster>> PerceptionNode::ClusterLaneP
             cur_cluster.mean_x = sum_x / n;
             clusters.push_back(cur_cluster);
             cur_cluster = Cluster{};
-            sum_y = 0.0;
-            sum_x = 0.0;
+            sum_y = sum_x = 0.0;
         };
 
         for (int bin_idx = 0; bin_idx < bin_count; ++bin_idx) {
             const auto& bin_points_idx = bins[bin_idx];
+
             if (!bin_points_idx.empty()) {
-                empty_run = 0;
                 for (size_t point_idx : bin_points_idx) {
                     add_point(sorted_pts[point_idx]);
                 }
             } else {
-                ++empty_run;
-                if (empty_run > empty_bin_gap) {
-                    flush_cluster();
-                }
+                flush_cluster();  // 빈 bin 만나면 바로 이전 구간 확정
             }
         }
-
-        flush_cluster();
+        flush_cluster();  // 마지막 구간 처리
         clusters_by_slice[idx] = clusters;
-    }
 
     return clusters_by_slice;
 }
