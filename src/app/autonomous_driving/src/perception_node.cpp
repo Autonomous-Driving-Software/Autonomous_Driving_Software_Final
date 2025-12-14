@@ -1,11 +1,13 @@
 /*
  * perception_node.cpp
+ * export LIBGL_ALWAYS_SOFTWARE=1
  */
 #include "autonomous_driving_config.hpp"
 #include "perception_node.hpp"
 #include <algorithm>
 #include <limits>
 #include <map>
+#include <cctype>
 
 using namespace Eigen;
 using namespace std;
@@ -19,6 +21,12 @@ PerceptionNode::PerceptionNode(const std::string &node_name, const rclcpp::NodeO
     //declare parameters(파라미터 등록+초기값 설정)
     this->declare_parameter("autonomous_driving/ns", "");
     this->declare_parameter("autonomous_driving/loop_rate_hz", 100.0);
+    this->declare_parameter("perception/slice_width", slice_width);
+    this->declare_parameter("perception/cluster_threshold", cluster_threshold);
+    this->declare_parameter("perception/gate_width", gate_width);
+    this->declare_parameter("perception/hist_bin_width_scale", 0.25); // hist_bin_width = cluster_threshold * scale
+    this->declare_parameter("perception/side_lane_window", side_lane_window);
+    this->declare_parameter("perception/lane_disconnect_gap", lane_disconnect_gap);
 
     ProcessParams();
 
@@ -59,6 +67,14 @@ PerceptionNode::~PerceptionNode() {}
 void PerceptionNode::ProcessParams() {
     this->get_parameter("autonomous_driving/ns", cfg_.vehicle_namespace);
     this->get_parameter("autonomous_driving/loop_rate_hz", cfg_.loop_rate_hz);
+    this->get_parameter("perception/slice_width", slice_width);
+    this->get_parameter("perception/cluster_threshold", cluster_threshold);
+    this->get_parameter("perception/gate_width", gate_width);
+    double hist_scale = 0.25;
+    this->get_parameter("perception/hist_bin_width_scale", hist_scale);
+    hist_bin_width = cluster_threshold * hist_scale;
+    this->get_parameter("perception/side_lane_window", side_lane_window);
+    this->get_parameter("perception/lane_disconnect_gap", lane_disconnect_gap);
 }
 
 void PerceptionNode::Run() {
@@ -137,194 +153,104 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
     }
 
     // ----------------------------------------------------------------------------------
-    // STEP 3. 슬라이스 별로 클러스터 이어주기
+    // STEP 3. 슬라이스 순서대로 클러스터 추적 (lane_id 0~3 관리)
     // ----------------------------------------------------------------------------------
 
-    // [3-1] ego에 가장 가까운 슬라이스 선택 
-    std::vector<int> slice_index_array; // slice 인덱스들만 따로 배열(slice_index_array)에 저장
-    for (const auto& kv : clusters_by_slice) slice_index_array.push_back(kv.first); // 슬라이스 인덱스들을 따로 배열에 저장
+    auto IsLeft = [&](double y) { return y > 0.1; };   // 좌측(y+) 허용 오차
+    auto IsRight = [&](double y) { return y < -0.1; }; // 우측(y-) 허용 오차
 
-    int start_idx = slice_index_array.front();                  
-    double best_dist = std::abs(SliceCenter(start_idx)); 
-    for (int idx : slice_indices) {                         
-        double dist = std::abs(SliceCenter(idx));
-        if (dist < best_dist) {       // 자차 기준 슬라이스 중심 거리를 계산해서 가장 가까운 슬라이스 인덱스를 찾는다.
-            best_dist = dist;   
-            start_idx = idx;
+    auto get_gate_center = [&](int lane_id, double x) -> double {
+        if (lane_id < 1 || lane_id > 2) return std::numeric_limits<double>::quiet_NaN();
+        int idx = lane_id - 1; // 1->0, 2->1
+        if (has_prev_lane_id_[idx]) {
+            return EvalLane(prev_lane_id_[idx], x);
         }
-    }
-
-    auto& start_clusters = clusters_by_slice[start_idx];  // 자차에 가까운 slice를 시작점으로 지정
-    Cluster* left_cluster = nullptr;                      // 왼쪽 차선 
-    Cluster* right_cluster = nullptr;                     // 오른쪽 차선 
-
-
-
-    // [3-2] 슬라이스 범위 내에서 최초 씨드를 찾기 위한 탐색 범위 (앞/뒤 N슬라이스) 
-    auto SelectStartCluster = [&](bool is_left, double gate_center) -> Cluster* { 
-        // function: 슬라이스별로 추출된 여러 클러스터 중에서 왼쪽/오른쪽 차선 후보를 게이트 중심과의 거리를 기준으로 선택
-        Cluster* best_gate = nullptr; 
-        double best_gate_diff = std::numeric_limits<double>::max();
-        Cluster* best_fallback = nullptr;
-        // 게이트가 없을 때는 가장 좌측(최대 y) / 우측(최소 y)을 선택
-        double best_fallback_metric = std::numeric_limits<double>::lowest();
-
-        int start_pos_int = static_cast<int>(start_idx);
-        // start_idx 주변 ±start_search_span 슬라이스에서 씨드 탐색
-        for (int offset = -start_search_span; offset <= start_search_span; ++offset) { 
-            int idx = start_pos_int + offset; 
-            if (idx < slice_indices.front() || idx > slice_indices.back()) continue;
-            auto it = clusters_by_slice.find(idx);
-            if (it == clusters_by_slice.end()) continue;
-            double gate = std::isfinite(gate_center) ? gate_center : std::numeric_limits<double>::quiet_NaN();
-
-            for (auto& cluster : it->second) {
-                double diff = std::isfinite(gate) ? std::abs(cluster.mean_y - gate) : std::numeric_limits<double>::max();
-                if (std::isfinite(gate) && diff <= gate_width && diff < best_gate_diff) {
-                    best_gate_diff = diff;
-                    best_gate = &cluster;
-                }
-
-                double metric = is_left ? cluster.mean_y : -cluster.mean_y;
-                if (metric > best_fallback_metric) {
-                    best_fallback_metric = metric;
-                    best_fallback = &cluster;
-                }
-            }
-
-            if (best_gate != nullptr) {
-                // 게이트 안에서 이미 찾았으면 추가 탐색 없이 반환
-                break;
-            }
-        }
-
-        return (best_gate != nullptr) ? best_gate : best_fallback;
+        return std::numeric_limits<double>::quiet_NaN();
     };
 
-    double start_x_center = SliceCenter(start_idx); // 시작 인덱스의 중심점으로 초기화 
-    double left_gate_center = (has_prev_left_lane_) ? EvalLane(prev_left_lane_, start_x_center) : std::numeric_limits<double>::quiet_NaN();
-    double right_gate_center = (has_prev_right_lane_) ? EvalLane(prev_right_lane_, start_x_center) : std::numeric_limits<double>::quiet_NaN();
-
-    left_cluster = SelectStartCluster(true, left_gate_center);    // 시작 슬라이스를 기준으로 왼쪽 차선 클러스터 
-    right_cluster = SelectStartCluster(false, right_gate_center); // 시작 슬라이스를 기준으로 오른쪽 차선 클러스터
-
-    std::vector<interface::Point2D> left_points;    // 왼쪽 차선 포인터들을 저장할 배열
-    std::vector<interface::Point2D> right_points;   // 오른쪽 차선 포인터들을 저장할 배열
-    double left_target_y = 0.0;                     // 왼쪽 차선 y값
-    double right_target_y = 0.0;                    // 오른쪽 차선 y값
-
-    // 차선 후보 클러스터의 포인트 수집하고 차선 중심 y값을 저장한다.
-    if (left_cluster != nullptr) {                  
-        left_points.insert(left_points.end(), left_cluster->points.begin(), left_cluster->points.end());
-        left_target_y = left_cluster->mean_y;
-    }
-    if (right_cluster != nullptr) {
-        right_points.insert(right_points.end(), right_cluster->points.begin(), right_cluster->points.end());
-        right_target_y = right_cluster->mean_y;
+    struct TrackState {
+        bool active{false};
+        double last_y{0.0};
+        std::vector<interface::Point2D> pts;
+    };
+    TrackState tracks[2]; // 0: lane1(left), 1: lane2(right)
+    for (int i = 0; i < 2; ++i) {
+        if (has_prev_lane_id_[i]) {
+            tracks[i].active = true;
+            tracks[i].last_y = EvalLane(prev_lane_id_[i], 0.0);
+        }
     }
 
-    auto start_pos_it = std::find(slice_indices.begin(), slice_indices.end(), start_idx); // 현재 시작 슬라이드 번호가 배열상의 몇번째 인덱스 인지 
-    size_t start_pos = std::distance(slice_indices.begin(), start_pos_it);                // 배열 내 순서(정수 인덱스) 로 변환
+    std::vector<int> slice_index_array;
+    for (const auto& kv : clusters_by_slice) slice_index_array.push_back(kv.first);
 
-    double left_target_forward = left_target_y;     // 슬라이스를 따라가며 왼쪽 차선 추적시 사용할 기준이 되는 값 
-    double right_target_forward = right_target_y;   // 슬라이스를 따라가며 오른쪽 차선 추적시 사용할 기준이 되는 값 
-
-    // [3-3] 이후 슬라이스에서 y가 가장 가까운 클러스터를 추적 (앞쪽)
-    for (size_t i = start_pos + 1; i < slice_indices.size(); ++i) { // 현재 슬라이스를 기준으로 이후 슬라이스 탐색
-        int idx = slice_indices[i]; 
+    for (int idx : slice_index_array) {
         auto& clusters = clusters_by_slice[idx];
         double x_center = SliceCenter(idx);
-        double left_gate = (has_prev_left_lane_) ? eval_lane(prev_left_lane_, x_center) : std::numeric_limits<double>::quiet_NaN(); // 이전 프레임에서 구한 왼쪽 차선의 다항식 계수를 현재 위치 x에 대
-        double right_gate = (has_prev_right_lane_) ? eval_lane(prev_right_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
 
-        if (left_cluster != nullptr) {  // 왼쪽 차선 후보가 존재할때 
-            const Cluster* best = nullptr;  
-            double best_diff = std::numeric_limits<double>::max();
-            for (const auto& cluster : clusters) {  // 현재 슬라이스의 클러스터를 순회하면서 
-                double diff_target = std::abs(cluster.mean_y - left_target_forward); // 이전 슬라이스에서 추적한 차선 중심과 현재 클러스터 중심의 y값 차이
-                double diff_gate = std::isfinite(left_gate) ? std::abs(cluster.mean_y - left_gate) : diff_target; // 이전 프레임의 예측 차선이 있으면 그 예측값과의 차이, 없으면 단순히 이전 추적값과의 차이
-                bool pass_gate = std::isfinite(left_gate) ? (diff_gate <= gate_width) : true;
+        double gate_y[2];
+        for (int i = 0; i < 2; ++i) gate_y[i] = get_gate_center(i + 1, x_center);
 
-                double metric = pass_gate ? diff_gate : diff_target;
-                if (metric < best_diff) {
-                    best_diff = metric;
-                    best = &cluster;
+        struct Candidate {
+            double cost;
+            int track;
+            int cluster;
+        };
+        std::vector<Candidate> cands;
+        cands.reserve(clusters.size() * 2);
+
+        for (size_t ci = 0; ci < clusters.size(); ++ci) {
+            const auto& cl = clusters[ci];
+            for (int ti = 0; ti < 2; ++ti) {
+                bool track_left = (ti == 0);
+                if (track_left && !IsLeft(cl.mean_y)) continue;
+                if (!track_left && !IsRight(cl.mean_y)) continue;
+                double gate = gate_y[ti];
+                double cost = std::numeric_limits<double>::max();
+                if (std::isfinite(gate)) {
+                    double diff = std::abs(cl.mean_y - gate);
+                    if (diff > gate_width) continue;
+                    cost = diff;
+                } else if (tracks[ti].active) {
+                    cost = std::abs(cl.mean_y - tracks[ti].last_y);
+                } else {
+                    cost = std::abs(cl.mean_y);
                 }
-            }
-            if (best != nullptr) {
-                left_points.insert(left_points.end(), best->points.begin(), best->points.end());
-                left_target_forward = best->mean_y;
+                cands.push_back({cost, ti, static_cast<int>(ci)});
             }
         }
 
-        if (right_cluster != nullptr) { // 오른쪽 차선 후보가 존재할때 
-            const Cluster* best = nullptr;
-            double best_diff = std::numeric_limits<double>::max();
-            for (const auto& cluster : clusters) {
-                double diff_target = std::abs(cluster.mean_y - right_target_forward);
-                double diff_gate = std::isfinite(right_gate) ? std::abs(cluster.mean_y - right_gate) : diff_target;
-                bool pass_gate = std::isfinite(right_gate) ? (diff_gate <= gate_width) : true;
+        std::sort(cands.begin(), cands.end(), [](const Candidate& a, const Candidate& b) {
+            return a.cost < b.cost;
+        });
 
-                double metric = pass_gate ? diff_gate : diff_target;
-                if (metric < best_diff) {
-                    best_diff = metric;
-                    best = &cluster;
-                }
-            }
-            if (best != nullptr) {
-                right_points.insert(right_points.end(), best->points.begin(), best->points.end());
-                right_target_forward = best->mean_y;
-            }
-        }
-    }
+        std::vector<bool> cluster_used(clusters.size(), false);
+        bool track_used[2] = {false, false};
 
-    // [3-4] 시작 슬라이스를 기반으로 이전(뒤쪽) 슬라이스로도 확장 추적
-    double left_target_backward = left_target_y;
-    double right_target_backward = right_target_y;
-    for (int i = static_cast<int>(start_pos) - 1; i >= 0; --i) { // 인덱스를 뒤로 하나씩 이동
-        int idx = slice_indices[static_cast<size_t>(i)];
-        auto& clusters = clusters_by_slice[idx];
-        double x_center = SliceCenter(idx);
-        double left_gate = (has_prev_left_lane_) ? eval_lane(prev_left_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
-        double right_gate = (has_prev_right_lane_) ? eval_lane(prev_right_lane_, x_center) : std::numeric_limits<double>::quiet_NaN();
-
-        if (left_cluster != nullptr) {
-            const Cluster* best = nullptr;
-            double best_diff = std::numeric_limits<double>::max();
-            for (const auto& cluster : clusters) {
-                double diff_target = std::abs(cluster.mean_y - left_target_backward);
-                double diff_gate = std::isfinite(left_gate) ? std::abs(cluster.mean_y - left_gate) : diff_target;
-                bool pass_gate = std::isfinite(left_gate) ? (diff_gate <= gate_width) : true;
-
-                double metric = pass_gate ? diff_gate : diff_target;
-                if (metric < best_diff) {
-                    best_diff = metric;
-                    best = &cluster;
-                }
-            }
-            if (best != nullptr) {
-                left_points.insert(left_points.end(), best->points.begin(), best->points.end());
-                left_target_backward = best->mean_y;
-            }
+        for (const auto& c : cands) {
+            if (track_used[c.track]) continue;
+            if (cluster_used[c.cluster]) continue;
+            const auto& cl = clusters[static_cast<size_t>(c.cluster)];
+            double diff_chk = std::isfinite(gate_y[c.track]) ? std::abs(cl.mean_y - gate_y[c.track]) : std::abs(cl.mean_y - tracks[c.track].last_y);
+            if (tracks[c.track].active && diff_chk > lane_disconnect_gap) continue;
+            track_used[c.track] = true;
+            cluster_used[c.cluster] = true;
+            tracks[c.track].active = true;
+            tracks[c.track].last_y = cl.mean_y;
+            tracks[c.track].pts.insert(tracks[c.track].pts.end(), cl.points.begin(), cl.points.end());
         }
 
-        if (right_cluster != nullptr) {
-            const Cluster* best = nullptr;
-            double best_diff = std::numeric_limits<double>::max();
-            for (const auto& cluster : clusters) {
-                double diff_target = std::abs(cluster.mean_y - right_target_backward);
-                double diff_gate = std::isfinite(right_gate) ? std::abs(cluster.mean_y - right_gate) : diff_target;
-                bool pass_gate = std::isfinite(right_gate) ? (diff_gate <= gate_width) : true;
-
-                double metric = pass_gate ? diff_gate : diff_target;
-                if (metric < best_diff) {
-                    best_diff = metric;
-                    best = &cluster;
-                }
-            }
-            if (best != nullptr) {
-                right_points.insert(right_points.end(), best->points.begin(), best->points.end());
-                right_target_backward = best->mean_y;
+        // 남은 클러스터는 새 트랙으로(해당 측에서 빈 ID에 할당)
+        for (size_t ci = 0; ci < clusters.size(); ++ci) {
+            if (cluster_used[ci]) continue;
+            const auto& cl = clusters[ci];
+            bool is_left = IsLeft(cl.mean_y);
+            int id = is_left ? 0 : 1; // left lane1, right lane2
+            if (!tracks[id].active && !track_used[id]) {
+                track_used[id] = true;
+                tracks[id].active = true;
+                tracks[id].last_y = cl.mean_y;
+                tracks[id].pts.insert(tracks[id].pts.end(), cl.points.begin(), cl.points.end());
             }
         }
     }
@@ -363,18 +289,15 @@ interface::PolyfitLanes PerceptionNode::FindLanes(const interface::Lane& lane_po
         return true;
     };
 
-    interface::PolyfitLane fitted_left_lane;
-    interface::PolyfitLane fitted_right_lane;
-    bool left_fit = fit_lane(left_points, "left_lane", fitted_left_lane);
-    bool right_fit = fit_lane(right_points, "right_lane", fitted_right_lane);
-
-    if (left_fit) {
-        prev_left_lane_ = fitted_left_lane;
-        has_prev_left_lane_ = true;
-    }
-    if (right_fit) {
-        prev_right_lane_ = fitted_right_lane;
-        has_prev_right_lane_ = true;
+    std::fill(std::begin(has_prev_lane_id_), std::end(has_prev_lane_id_), false);
+    for (int i = 0; i < 2; ++i) {
+        interface::PolyfitLane lane;
+        int lane_id = (i == 0) ? 1 : 2; // left=1, right=2
+        if (fit_lane(tracks[i].pts, std::to_string(lane_id), lane)) {
+            prev_lane_id_[i] = lane;
+            has_prev_lane_id_[i] = true;
+            poly_lanes_.polyfitlanes.push_back(lane);
+        }
     }
 
     return poly_lanes_;
@@ -467,7 +390,7 @@ std::map<int, std::vector<PerceptionNode::Cluster>> PerceptionNode::FindCluster(
         }
         flush_cluster();  // 마지막 구간 처리
         clusters_by_slice[idx] = clusters;
-
+    }
     return clusters_by_slice;
 }
 
@@ -479,10 +402,20 @@ interface::PolyfitLane PerceptionNode::FindDrivingWay(const interface::PolyfitLa
     const interface::PolyfitLane* left_lane = nullptr;
     const interface::PolyfitLane* right_lane = nullptr;
 
+    auto lane_idx = [](const interface::PolyfitLane& ln) -> int {
+        if (ln.id.size() == 1 && std::isdigit(ln.id[0])) return ln.id[0] - '0';
+        return -1;
+    };
+
     for (const auto& lane : poly_lanes.polyfitlanes) {
-        if (lane.id == "left_lane") {
+        int idx = lane_idx(lane);
+        if (idx == 1) { // 좌 내측 우선
             left_lane = &lane;
-        } else if (lane.id == "right_lane") {
+        } else if (idx == 0 && left_lane == nullptr) { // 좌 외측
+            left_lane = &lane;
+        } else if (idx == 2) { // 우 내측 우선
+            right_lane = &lane;
+        } else if (idx == 3 && right_lane == nullptr) { // 우 외측
             right_lane = &lane;
         }
     }
@@ -509,12 +442,11 @@ interface::PolyfitLane PerceptionNode::FindDrivingWay(const interface::PolyfitLa
         driving_way_.a3 = single_lane->a3;
 
         double offset_sign = 0.0;
-        if (single_lane->id == "left_lane") {
+        int idx = lane_idx(*single_lane);
+        if (idx == 0 || idx == 1) {
             offset_sign = -offset;
-        } else if (single_lane->id == "right_lane") {
-            offset_sign = offset;
         } else {
-            offset_sign = (single_lane->a0 >= 0.0) ? -offset : offset;
+            offset_sign = offset;
         }
         driving_way_.a0 += offset_sign;
         has_candidate = true;

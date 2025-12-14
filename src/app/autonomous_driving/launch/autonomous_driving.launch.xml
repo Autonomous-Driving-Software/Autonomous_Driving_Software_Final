@@ -2,6 +2,13 @@
 <launch>
     <arg name="ns1" default="ego"/>
     <arg name="loop_rate_hz" default="100.0"/>
+    <!-- Perception tuning -->
+    <arg name="slice_width" default="0.5"/>
+    <arg name="cluster_threshold" default="0.4"/>
+    <arg name="gate_width" default="0.4"/>
+    <arg name="hist_bin_width_scale" default="0.25"/>
+    <arg name="side_lane_window" default="0.4"/>
+    <arg name="lane_disconnect_gap" default="0.4"/>
     <arg name="use_manual_inputs" default="false" />
 
     <!-- Perception Node -->
@@ -9,6 +16,12 @@
         <param name="autonomous_driving/ns" value="$(var ns1)"/>
         <param name="autonomous_driving/loop_rate_hz" value="$(var loop_rate_hz)"/>
         <param name="autonomous_driving/use_manual_inputs" value="$(var use_manual_inputs)"/>
+        <param name="perception/slice_width" value="$(var slice_width)"/>
+        <param name="perception/cluster_threshold" value="$(var cluster_threshold)"/>
+        <param name="perception/gate_width" value="$(var gate_width)"/>
+        <param name="perception/hist_bin_width_scale" value="$(var hist_bin_width_scale)"/>
+        <param name="perception/side_lane_window" value="$(var side_lane_window)"/>
+        <param name="perception/lane_disconnect_gap" value="$(var lane_disconnect_gap)"/>
     </node>
 
     <!-- Planning Node -->

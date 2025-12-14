@@ -84,12 +84,12 @@ class PerceptionNode : public rclcpp::Node {
 
         double min_x;
         double max_x;
-        const double slice_width = 0.5;                         // x 슬라이스 폭 [m]
-        const double cluster_threshold = 0.5;                   // 슬라이스 내 y 클러스터 간격 [m]
-        const double gate_width = 0.4;                          // 이전 프레임 기반 게이팅 폭 [m]
-        const double hist_bin_width = cluster_threshold * 0.25; // 빈 히스토그램 폭을 세밀하게 분리
-        const int empty_bin_gap = 1;                            // 연속 빈 bin 허용 개수
-        const int start_search_span = 3;                        // 슬라이스 범위 내에서 최초 씨드를 찾기 위한 탐색 범위 (앞/뒤 N슬라이스)
+        double slice_width = 0.5;                         // x 슬라이스 폭 [m]
+        double cluster_threshold = 0.5;                   // 슬라이스 내 y 클러스터 간격 [m]
+        double gate_width = 0.5;                          // 이전 프레임 기반 게이팅 폭 [m]
+        double hist_bin_width = cluster_threshold * 0.25; // 빈 히스토그램 폭을 세밀하게 분리
+        double side_lane_window = 0.5;                    // 동일 측면에서 다른 차선으로 점프하지 않도록 허용하는 y 거리 [m]
+        double lane_disconnect_gap = 0.6;                 // 차선 포인트가 끊길 때 옆 차선으로 점프하지 않도록 허용하는 최대 y 이격
 
         //-- Output  ----------------------------------------------------//
 
@@ -102,6 +102,8 @@ class PerceptionNode : public rclcpp::Node {
         bool has_prev_right_lane_{false};           // 이전 프레임에서 오른쪽 차선이 유효하게 추정되었는지 
         interface::PolyfitLane prev_left_lane_;     // 현재 프레임의 왼쪽 차선을 찾을 때 이전 프레임의 결과
         interface::PolyfitLane prev_right_lane_;    // 현재 프레임의 오른쪽 차선을 찾을
+        bool has_prev_lane_id_[2]{false, false}; // lane id 1,2만 사용 (좌/우)
+        interface::PolyfitLane prev_lane_id_[2];
 
         // Previous driving way for smoothing
         bool has_prev_driving_way_{false};
