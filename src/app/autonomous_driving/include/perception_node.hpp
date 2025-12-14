@@ -62,7 +62,10 @@ class PerceptionNode : public rclcpp::Node {
         double SliceCenter(int idx) {
             return min_x + (static_cast<double>(idx) + 0.5) * slice_width;
         }
-        std::map<int, std::vector<PerceptionNode::Cluster>> ClusterLanePoints(std::map<int, std::vector<interface::Point2D>> slices);
+        double EvalLane(const interface::PolyfitLane& lane, double x) { 
+            return lane.a0 + lane.a1 * x + lane.a2 * x * x + lane.a3 * x * x * x;
+        }
+        std::map<int, std::vector<PerceptionNode::Cluster>> FindCluster(std::map<int, std::vector<interface::Point2D>> slices);
         interface::PolyfitLane FindDrivingWay(const interface::PolyfitLanes& poly_lanes);
 
         //-- Variable ------------------------------------------------//
@@ -81,12 +84,12 @@ class PerceptionNode : public rclcpp::Node {
 
         double min_x;
         double max_x;
-        const double slice_width = 0.2;                         // x 슬라이스 폭 [m]
-        const double cluster_threshold = 0.2;                   // 슬라이스 내 y 클러스터 간격 [m]
-        const double gate_width = 0.2;                          // 이전 프레임 기반 게이팅 폭 [m]
+        const double slice_width = 0.5;                         // x 슬라이스 폭 [m]
+        const double cluster_threshold = 0.5;                   // 슬라이스 내 y 클러스터 간격 [m]
+        const double gate_width = 0.4;                          // 이전 프레임 기반 게이팅 폭 [m]
         const double hist_bin_width = cluster_threshold * 0.25; // 빈 히스토그램 폭을 세밀하게 분리
         const int empty_bin_gap = 1;                            // 연속 빈 bin 허용 개수
-        const int start_search_span = 5;                        // 슬라이스 범위 내에서 최초 씨드를 찾기 위한 탐색 범위 (앞/뒤 N슬라이스)
+        const int start_search_span = 3;                        // 슬라이스 범위 내에서 최초 씨드를 찾기 위한 탐색 범위 (앞/뒤 N슬라이스)
 
         //-- Output  ----------------------------------------------------//
 
@@ -98,7 +101,7 @@ class PerceptionNode : public rclcpp::Node {
         bool has_prev_left_lane_{false};            // 이전 프레임에서 왼쪽 차선이 유효하게 추정되었는지
         bool has_prev_right_lane_{false};           // 이전 프레임에서 오른쪽 차선이 유효하게 추정되었는지 
         interface::PolyfitLane prev_left_lane_;     // 현재 프레임의 왼쪽 차선을 찾을 때 이전 프레임의 결과
-        interface::PolyfitLane prev_right_lane_;    // 현재 프레임의 오른쪽 차선을 찾을 때 이전 프레임의 결과
+        interface::PolyfitLane prev_right_lane_;    // 현재 프레임의 오른쪽 차선을 찾을
 
         // Previous driving way for smoothing
         bool has_prev_driving_way_{false};
