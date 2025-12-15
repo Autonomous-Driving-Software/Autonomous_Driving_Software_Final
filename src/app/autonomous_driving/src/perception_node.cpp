@@ -505,7 +505,6 @@ interface::PolyfitLane PerceptionNode::FindDrivingWay(const interface::PolyfitLa
     return driving_way_;
 }
 
-
 int main(int argc, char **argv) {
     std::string node_name = "perception_node";
 

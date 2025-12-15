@@ -67,7 +67,6 @@ class PerceptionNode : public rclcpp::Node {
         }
         std::map<int, std::vector<PerceptionNode::Cluster>> FindCluster(std::map<int, std::vector<interface::Point2D>> slices);
         interface::PolyfitLane FindDrivingWay(const interface::PolyfitLanes& poly_lanes);
-
         //-- Variable ------------------------------------------------//
 
         // Subscriber 

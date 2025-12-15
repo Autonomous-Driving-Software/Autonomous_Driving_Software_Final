@@ -76,25 +76,32 @@ class ControlNode : public rclcpp::Node {
             i_driving_way_real_ = ros2_bridge::GetPolyfitLaneData(*msg);
             b_is_driving_way_real_ = true;
         }
+        inline void CallbackPlannedPathPoints(const ad_msgs::msg::LanePointData::SharedPtr msg) {
+            std::lock_guard<std::mutex> lock(mutex_driving_way_points_);
+            i_driving_way_points_ = ros2_bridge::GetLanePoints(*msg);
+            b_is_driving_way_points_ = true;
+        }
         //=====================================================
         // TODO: Add more functions
         //=====================================================
         /** - algorithm::LateralControl()
         * @brief Calculate steering angle using pure pursuit
         * @param vehicle_state Vehicle state (interface)
-        * @param driving_way_real Driving way (interface)
+        * @param path_points Planned path points (interface)
+        * @param mission Mission info (road condition for ice handling)
         * @return Steering angle
         */
-        double LateralControl(const interface::VehicleState &vehicle_state, const interface::PolyfitLane &driving_way_real, const AutonomousDrivingConfig &cfg);
+        double LateralControl(const interface::VehicleState &vehicle_state, const interface::Lane &path_points, const interface::Mission &mission, const AutonomousDrivingConfig &cfg);
 
         /** -algorithm::LongitudinalControl()
          * @brief Calculate acceleration and brake using PID control
          * @param vehicle_state Vehicle state (interface)
          * @param reference_speed Reference speed (double)
+         * @param mission Mission info (slope, etc.)
          * @return Pair of acceleration and brake (std::pair<double, double>)
 
         */
-        std::pair<double, double> LongitudinalControl(const interface::VehicleState &vehicle_state, const double &reference_speed, const AutonomousDrivingConfig &cfg);
+        std::pair<double, double> LongitudinalControl(const interface::VehicleState &vehicle_state, const double &reference_speed, const interface::Mission &mission, const AutonomousDrivingConfig &cfg);
 
 
         //------------------------------------------------------//
@@ -109,6 +116,7 @@ class ControlNode : public rclcpp::Node {
         rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr s_reference_speed_;
         //[다훈 수정] lateral control을 위해 driving-way 구독 추가
         rclcpp::Subscription<ad_msgs::msg::PolyfitLaneData>::SharedPtr s_driving_way_real_;
+        rclcpp::Subscription<ad_msgs::msg::LanePointData>::SharedPtr s_driving_way_points_;
 
         //===============================================
         // Input
@@ -119,6 +127,7 @@ class ControlNode : public rclcpp::Node {
         interface::Mission i_mission_;
         //[다훈 수정] driving_way 추가
         interface::PolyfitLane i_driving_way_real_;
+        interface::Lane i_driving_way_points_;
 
         //[다훈 수정] reference_speed_ 추가
         double i_reference_speed_ = 0.0;
@@ -133,6 +142,7 @@ class ControlNode : public rclcpp::Node {
         //[다훈 수정] reference_speed_ mutex 추가
         std::mutex mutex_reference_speed_;
         std::mutex mutex_driving_way_real_;
+        std::mutex mutex_driving_way_points_;
 
         // Publisher (멤버 선언)
         //(1) vehicle command publish (control에서 사용)
@@ -151,6 +161,7 @@ class ControlNode : public rclcpp::Node {
         bool b_is_mission_ = false;
         bool b_is_reference_speed_ = false;
         bool b_is_driving_way_real_ = false;
+        bool b_is_driving_way_points_ = false;
 
 };
 

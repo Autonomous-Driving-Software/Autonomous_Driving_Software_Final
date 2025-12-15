@@ -19,12 +19,10 @@ ControlNode::ControlNode(const std::string &node_name, const rclcpp::NodeOptions
     this->declare_parameter("autonomous_driving/ns", "");
     this->declare_parameter("autonomous_driving/loop_rate_hz", 100.0);
     this->declare_parameter("autonomous_driving/use_manual_inputs", false);    
-    // Low-μ / slope handling parameters
-    this->declare_parameter("control/friction_mu", 0.4);           // effective friction (icy)
-    this->declare_parameter("control/slope_ff_gain", 1.0);         // feed-forward gain for pitch compensation
-    this->declare_parameter("control/slip_angle_thresh", 0.15);    // [rad]
-    this->declare_parameter("control/yaw_rate_thresh", 0.35);      // [rad/s]
-    this->declare_parameter("control/slip_scale", 0.5);            // scale accel/brake under slip
+    this->declare_parameter("control/pp_ice_lookahead_scale", 1.8);
+    this->declare_parameter("control/pp_ice_steer_scale", 0.6);
+    this->declare_parameter("control/slope_ff_up", 0.7);
+    this->declare_parameter("control/slope_ff_down", 0.5);
 
     ProcessParams();
 
@@ -39,6 +37,8 @@ ControlNode::ControlNode(const std::string &node_name, const rclcpp::NodeOptions
     this->get_parameter("autonomous_driving/pure_pursuit_kd", cfg_.param_pp_kd);
     this->get_parameter("autonomous_driving/pure_pursuit_kv", cfg_.param_pp_kv);
     this->get_parameter("autonomous_driving/pure_pursuit_kc", cfg_.param_pp_kc);
+    this->get_parameter("control/pp_ice_lookahead_scale", cfg_.param_pp_ice_lookahead_scale);
+    this->get_parameter("control/pp_ice_steer_scale", cfg_.param_pp_ice_steer_scale);
     this->get_parameter("autonomous_driving/pid_kp", cfg_.param_pid_kp);
     this->get_parameter("autonomous_driving/pid_ki", cfg_.param_pid_ki);
     this->get_parameter("autonomous_driving/pid_kd", cfg_.param_pid_kd);
@@ -47,11 +47,8 @@ ControlNode::ControlNode(const std::string &node_name, const rclcpp::NodeOptions
     //(2) Longitudinal control parameters
     this->get_parameter("autonomous_driving/speed_error_integral", cfg_.speed_error_integral);
     this->get_parameter("autonomous_driving/speed_error_prev", cfg_.speed_error_prev);
-    this->get_parameter("control/friction_mu", cfg_.param_friction_mu);
-    this->get_parameter("control/slope_ff_gain", cfg_.param_slope_ff_gain);
-    this->get_parameter("control/slip_angle_thresh", cfg_.param_slip_angle_thresh);
-    this->get_parameter("control/yaw_rate_thresh", cfg_.param_yaw_rate_thresh);
-    this->get_parameter("control/slip_scale", cfg_.param_slip_scale);
+    this->get_parameter("control/slope_ff_up", cfg_.param_slope_ff_up);
+    this->get_parameter("control/slope_ff_down", cfg_.param_slope_ff_down);
 
     //(3) Vehicle
     this->get_parameter("autonomous_driving/wheel_base", cfg_.param_wheel_base);
@@ -92,6 +89,8 @@ ControlNode::ControlNode(const std::string &node_name, const rclcpp::NodeOptions
     //[다훈 수정] lateral control을 위해 driving-way subscriber 추가 (planning node에서 퍼블리시하는거)
     s_driving_way_real_ = this->create_subscription<ad_msgs::msg::PolyfitLaneData>(
         "driving_way_real", qos_profile, std::bind(&ControlNode::CallbackDrivingWay, this, std::placeholders::_1));
+    s_driving_way_points_ = this->create_subscription<ad_msgs::msg::LanePointData>(
+        "driving_way_points", qos_profile, std::bind(&ControlNode::CallbackPlannedPathPoints, this, std::placeholders::_1));
 
     //=================================================
     //Publisher init
@@ -156,9 +155,8 @@ void ControlNode::Run() {
         RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Wait for Reference Speed ...");
         return;
     }
-    //[다훈 수정] lateral control을 위해 driving_way_real 가져오기
-    if (b_is_driving_way_real_ == false) {
-        RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Wait for Driving Way ...");
+    if (b_is_driving_way_points_ == false) {
+        RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Wait for Planned Path Points ...");
         return;
     }
 
@@ -197,17 +195,16 @@ void ControlNode::Run() {
         reference_speed = i_reference_speed_;
     }
 
-    // [다훈 수정] lateral control을 위해 driving_way_real 가져오기(지역변수로 복사)
-    interface::PolyfitLane driving_way_real; {
-        std::lock_guard<std::mutex> lock(mutex_driving_way_real_);
-        driving_way_real = i_driving_way_real_;
+    interface::Lane driving_way_points; {
+        std::lock_guard<std::mutex> lock(mutex_driving_way_points_);
+        driving_way_points = i_driving_way_points_;
     }
     
     //===================================================
     // Algorithm
     //===================================================
     // (1) lateral control
-    double steering_angle = ControlNode::LateralControl(vehicle_state, driving_way_real, cfg_);
+    double steering_angle = ControlNode::LateralControl(vehicle_state, driving_way_points, mission, cfg_);
     // (2) output variables: longitudinal control
     interface::VehicleCommand vehicle_command;
 
@@ -219,7 +216,7 @@ void ControlNode::Run() {
     std::pair<double, double> accel_brake_command;
 
     // longitudinal control
-    accel_brake_command = ControlNode::LongitudinalControl(vehicle_state, reference_speed, cfg_);
+    accel_brake_command = ControlNode::LongitudinalControl(vehicle_state, reference_speed, mission, cfg_);
 
     // [다훈 수정11.27]longitudinal control 결과를 vehicle_command에 반영 (이거 빠져서 속도가 계속 들어간 듯)
     vehicle_command.accel = accel_brake_command.first;
@@ -239,55 +236,78 @@ void ControlNode::Run() {
 }
 
 //===================================================
-// LateralControl 함수 구현 
+// LateralControl 함수 구현 (Pure Pursuit with path points)
 //===================================================
-double ControlNode::LateralControl(const interface::VehicleState &vehicle_state, const interface::PolyfitLane &driving_way_real, const AutonomousDrivingConfig &cfg) {
+double ControlNode::LateralControl(const interface::VehicleState &vehicle_state, const interface::Lane &path_points, const interface::Mission &mission, const AutonomousDrivingConfig &cfg) {
     /*
     *@brief Calculate steering using Pure Pursuit algorithm
-    * inputs: vehicle_state, driving_way_real, cfg
-    * output: steering angle (radian??)
-    * Purpose: Implement Pure Pursuit Control to calculate the steering angle based on the vehicle state and driving way
+    * inputs: vehicle_state, path_points (already local/body frame), cfg
+    * output: steering angle (radian)
     */
 
-    ///////////////////TODO///////////////////
-    //Initialize Inputs
-    double l_xd; // look-ahead distance [m]
-    double g_x, g_y; // look-ahead point coordinates [m]
-    double l_d; // distance between vehicle and look-ahead point [m]
-    //Initialize Outputs
-    double steering_angle = 0.0;
+    if (path_points.point.empty()) {
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *get_clock(), 500, "[LateralControl] No path points, steering=0");
+        return 0.0;
+    }
 
-    // Step 0: Set look-ahead distance
-    l_xd = cfg.param_pp_kd;
+    // Pure Pursuit의 look-ahead 거리 (빙판길이면 더 길게 잡아 조향을 부드럽게)
+    double l_xd = cfg.param_pp_kd + cfg.param_pp_kv * vehicle_state.velocity + cfg.param_pp_kc;
+    if (mission.road_condition == "Ice") {
+        l_xd *= cfg.param_pp_ice_lookahead_scale;
+    }
+    //const double l_xd = cfg.param_pp_kd;
 
-    //[다훈 수정]Step 1: Get look-ahead point using look-ahead distance
-    // (g_x g_y) = (x, ax^3 + bx^2 + cx + d)|x=l_xd
-    // driving_way_real의 계수 사용
-    // step 1-1: g_x는 l_xd로 고정
-    g_x = l_xd;
-    // step 1-2: g_y는 다항식에 대입하여 계산
-    g_y = driving_way_real.a3 * pow(g_x, 3) + driving_way_real.a2 * pow(g_x, 2) + driving_way_real.a1 * g_x + driving_way_real.a0;
+    // look-ahead 지점을 path 상에서 보간
+    double target_x = path_points.point.front().x;
+    double target_y = path_points.point.front().y;
+    double accumulated = 0.0;
+    bool found_target = false;
 
-    //[다훈 수정]Step 2: The distance between vehicle position and look-ahead point
-    //l_d = sqrt(g_x² + g_y²)
-    //e_ld = g_y
-    l_d = sqrt(pow(g_x, 2) + pow(g_y, 2));
-    double e_ld = g_y; // lateral error
+    for (size_t i = 1; i < path_points.point.size(); ++i) {
+        double dx = path_points.point[i].x - path_points.point[i - 1].x;
+        double dy = path_points.point[i].y - path_points.point[i - 1].y;
+        double segment_len = std::hypot(dx, dy);
 
-    //[다훈 수정]Step 3: Calculate steering angle using Pure Pursuit formula
-    // steering_angle = atan2(2 * L * e_ld / l_d^2)
-    //1/R = 2 * e_ld / l_d^2
-    // wheel_base 멤버 변수 사용(헤더파일에 정의되어 있음)
-    steering_angle = atan2(2.0 * cfg.param_wheel_base * e_ld, (l_d * l_d));
+        accumulated += segment_len;
 
-    /////////////////////////////////////////////////
+        if (accumulated >= l_xd && segment_len > 1e-3) {
+            double ratio = (l_xd - (accumulated - segment_len)) / segment_len;
+            if (ratio < 0.0) {
+                ratio = 0.0;
+            } else if (ratio > 1.0) {
+                ratio = 1.0;
+            }
+            target_x = path_points.point[i - 1].x + ratio * dx;
+            target_y = path_points.point[i - 1].y + ratio * dy;
+            found_target = true;
+            break;
+        }
+    }
+
+    if (!found_target) {
+        target_x = path_points.point.back().x;
+        target_y = path_points.point.back().y;
+    }
+
+    double l_d = std::hypot(target_x, target_y);
+    if (l_d < 1e-3) {
+        return 0.0;
+    }
+
+    double e_ld = target_y; // 로컬 좌표계에서 y가 lateral error
+
+    double steering_angle = std::atan2(2.0 * cfg.param_wheel_base * e_ld, (l_d * l_d));
+    if (mission.road_condition == "Ice") {
+        steering_angle *= cfg.param_pp_ice_steer_scale; // 급조향 완화
+    }
+
     return steering_angle;
 }
 
 //===================================================
 // LongitudinalControl 함수 구현 
 //===================================================
-std::pair<double, double> ControlNode::LongitudinalControl(const interface::VehicleState &vehicle_state, const double &reference_speed, const AutonomousDrivingConfig &cfg) {
+std::pair<double, double> ControlNode::LongitudinalControl(const interface::VehicleState &vehicle_state, const double &reference_speed, const interface::Mission &mission, const AutonomousDrivingConfig &cfg) {
     /**
      * @brief Calculate the acceleration and brake commands using PID control
      * inputs: vehicle_state, reference_speed
@@ -310,35 +330,23 @@ std::pair<double, double> ControlNode::LongitudinalControl(const interface::Vehi
     // Parameters of PID is initialized in autonomous_driving.hpp: param_pid_kp_, param_pid_ki_, param_pid_kd_
     double u = (cfg.param_pid_kp * speed_error) + (cfg.param_pid_ki * cfg_.speed_error_integral) + (cfg.param_pid_kd * (speed_error - cfg_.speed_error_prev) / cfg.dt);
 
+    // Mission-based slope feed-forward (Up/Down)
+    double slope_ff = 0.0;
+    if (mission.road_slope == "Up") {
+        slope_ff = cfg.param_slope_ff_up;          // uphill needs extra drive
+    } else if (mission.road_slope == "Down") {
+        slope_ff = -cfg.param_slope_ff_down;       // downhill bias toward braking
+    }
+    u += slope_ff;
+
     cfg_.speed_error_prev = speed_error; // 이전 오차 저장
-    // Slope feed-forward (pitch>0 uphill)
-    double slope_ff = cfg.param_slope_ff_gain * 9.81 * std::sin(vehicle_state.pitch);
-    u += slope_ff * cfg.dt; // 작은 적분 보상
-
-    // Friction-circle based longitudinal limit
-    double ay_est = vehicle_state.velocity * vehicle_state.yaw_rate; // v*w ≈ lat accel
-    double mu_g = cfg.param_friction_mu * 9.81;
-    double max_ax = 0.0;
-    if (mu_g > 0.0) {
-        double rem = mu_g * mu_g - ay_est * ay_est;
-        if (rem > 0.0) max_ax = std::sqrt(rem);
-    }
-
-    // Slip mitigation
-    double slip_scale = 1.0;
-    if (std::abs(vehicle_state.slip_angle) > cfg.param_slip_angle_thresh ||
-        std::abs(vehicle_state.yaw_rate) > cfg.param_yaw_rate_thresh) {
-        slip_scale = cfg.param_slip_scale;
-    }
-
-    // [Output] Set accel_command and brake_command values with clamps
+    // [Output] Set accel_command and brake_command values
     if (u > 0) {
-        accel_command = std::min(u, max_ax) * slip_scale;
+        accel_command = u;
         brake_command = 0.0;
     } else {
-        double decel = std::min(-u, max_ax) * slip_scale;
         accel_command = 0.0;
-        brake_command = decel * cfg.param_brake_ratio; // brake ratio 곱해서 제동력 조절
+        brake_command = -u * cfg.param_brake_ratio; // brake ratio 곱해서 제동력 조절
     }
 
     ///////////////////////////////////////////////////

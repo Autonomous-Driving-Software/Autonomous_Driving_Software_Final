@@ -14,7 +14,6 @@
 #include <cmath>
 #include <chrono>
 #include <cmath>
-#include <eigen3/Eigen/Dense> 
 
 // Interface Header (ROS 독립적)
 #include "interface_lane.hpp"
@@ -31,6 +30,8 @@
 #include <std_msgs/msg/float32.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
+#include <ad_msgs/msg/lane_point_data.hpp>
+#include <rviz_2d_overlay_msgs/msg/overlay_text.hpp>
 
 // Parameter Header
 #include "autonomous_driving_config.hpp"
@@ -41,7 +42,7 @@ class PlanningNode : public rclcpp::Node {
         // 주행 모드 정의
         //================================
         enum class DrivingMode {
-            NORMAL_DRIVING, // 일반 주행
+            LANE_KEEPING, // 일반 주행
             SCC, // Safe Cruise Control
             LANE_CHANGE // 차선 변경
         };
@@ -52,7 +53,7 @@ class PlanningNode : public rclcpp::Node {
         // - VelocityPlanning: TTC/속도 계산 담당
         //================================
         struct BehaviorContext {
-            DrivingMode current_mode = DrivingMode::NORMAL_DRIVING;
+            DrivingMode current_mode = DrivingMode::LANE_KEEPING;
             
             // ============================================
             // SCC 관련 변수 [for Dynamic Obstacle]
@@ -156,24 +157,26 @@ class PlanningNode : public rclcpp::Node {
         // 함수 선언
         //================================================
         // 1. [11.28 다훈 수정] Behavior(모드) 판단 함수 추가
-        BehaviorContext BehaviorPlanning(const interface::VehicleState &vehicle_state, const interface::Mission &mission, const interface::PolyfitLane &driving_way);
+        BehaviorContext BehaviorPlanning(const interface::VehicleState &vehicle_state, const interface::Mission &mission, const interface::Lane &driving_path);
 
         // 2. [11.28 다훈 수정*] VelocityPlanning 함수 추가 + BehaviorContext 추가
-        double VelocityPlanning(const interface::VehicleState &vehicle_state, const interface::Lane &lane_points, const interface::Mission &mission, const interface::PolyfitLane &driving_way_real, const BehaviorContext &ctx);
+        double VelocityPlanning(const interface::VehicleState &vehicle_state, const interface::Lane &lane_points, const interface::Mission &mission, const interface::Lane &driving_path_points, const BehaviorContext &ctx);
 
         // 3. [12.10 다훈 수정] Forward-Backward Speed Profile Smoothing 함수
-        double SmoothSpeedProfile(const interface::PolyfitLane &driving_way, double v_ref, double current_velocity);
+        double SmoothSpeedProfile(const interface::Lane &driving_path_points, double v_ref, double current_velocity);
 
         // 4. [12.07 다훈 수정] Frenet 좌표계 변환 함수 
-        FrenetCoordinate CartesianToFrenet(double x_rel, double y_rel, const interface::PolyfitLane &driving_way);
+        FrenetCoordinate CartesianToFrenet(double x_rel, double y_rel);
 
-        std::pair<double, double> FrenetToCartesian(double s, double d, const interface::PolyfitLane &driving_way);
+        std::pair<double, double> FrenetToCartesian(double s, double d);
 
         // 4. [12.08 다훈 수정] FrenetConverter 업데이트 함수
-        void UpdateFrenetConverter(const interface::PolyfitLane &driving_way);
+        void UpdateFrenetConverter(const interface::Lane &path_points);
 
-        interface::PolyfitLane LaneChange(const interface::VehicleState &vehicle_state, const interface::PolyfitLane &driving_way, const BehaviorContext &ctx);
+        interface::Lane LaneChange(const interface::VehicleState &vehicle_state, const interface::PolyfitLane &driving_way, const BehaviorContext &ctx);
 
+        interface::Lane SamplePathFromPolyfit(const interface::PolyfitLane &lane, double max_s = 40.0, double ds = 1.0);
+        interface::Lane BuildLaneFromLocalPoints(const std::vector<double> &x_pts, const std::vector<double> &y_pts, const std::string &frame_id, const std::string &id);
 
         //[11.28 다훈 수정] GlobalToLocal 함수 추가(dynamic / static obstacle 좌표 변환용)
         // - algorithm::GlobalToLocal()
@@ -226,12 +229,16 @@ class PlanningNode : public rclcpp::Node {
         rclcpp::Publisher<ad_msgs::msg::VehicleCommand>::SharedPtr          p_vehicle_command_;
         rclcpp::Publisher<ad_msgs::msg::PolyfitLaneData>::SharedPtr         p_driving_way_real_;
         rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr               p_reference_speed_;
+        rclcpp::Publisher<ad_msgs::msg::LanePointData>::SharedPtr          p_driving_way_points_;
         
         // Visualization Publishers
         rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr       p_lane_change_target_;
         rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr  p_lane_change_path_; 
         rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr       p_static_object_marker_;  // Static object 위치 시각화
         rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr  p_frenet_debug_marker_;   // Frenet 디버깅용
+        rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr       p_lane_id_text_;          // Ego 위 차선 ID 텍스트
+        rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr       p_info_text_;             // 우측 상단 정보 패널 텍스트 (3D)
+        rclcpp::Publisher<rviz_2d_overlay_msgs::msg::OverlayText>::SharedPtr p_overlay_text_;         // 화면 고정 오버레이 텍스트
 
         // Timer
         rclcpp::TimerBase::SharedPtr t_run_node_;
@@ -261,13 +268,16 @@ class PlanningNode : public rclcpp::Node {
         
         // 차선 변경 경로 Global 좌표 저장
         std::vector<std::pair<double, double>> lane_change_path_global_;
+        interface::Lane driving_way_points_;
         
         //==============================================
         // FrenetConverter 관련 변수
         //==============================================
-        FrenetConverter frenet_converter_;           // Frenet 좌표 변환기
-        interface::PolyfitLane cached_driving_way_;  // 캐시된 driving_way (변경 감지용)
+        FrenetConverter frenet_converter_;           // Frenet 좌표 변환기 (현재 경로용)
+        FrenetConverter base_frenet_converter_;      // 원래 차선 경로용 (차선 변경 완료 확인용)
+        interface::Lane cached_path_points_;         // 캐시된 path points (변경 감지용)
         bool frenet_converter_initialized_ = false;  // FrenetConverter 초기화 여부
+        bool base_frenet_converter_initialized_ = false;  // base FrenetConverter 초기화 여부
         
         //==============================================
         // Flag (데이터 수신 확인용)
