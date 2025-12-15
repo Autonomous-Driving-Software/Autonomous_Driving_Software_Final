@@ -1,0 +1,27 @@
+[35m[1mConsolidate compiler generated dependencies of target vehicle[0m
+[35m[1mConsolidate compiler generated dependencies of target display[0m
+[35m[1mConsolidate compiler generated dependencies of target lane_detection[0m
+[ 28%] Built target vehicle
+[ 57%] Built target display
+[100%] Built target lane_detection
+-- Install configuration: ""
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/lib/simulator/vehicle
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/lib/simulator/lane_detection
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/lib/simulator/display
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/share/simulator/launch
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/share/simulator/launch/simulation.launch.xml
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/share/ament_index/resource_index/package_run_dependencies/simulator
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/share/ament_index/resource_index/parent_prefix_path/simulator
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/share/simulator/environment/ament_prefix_path.sh
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/share/simulator/environment/ament_prefix_path.dsv
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/share/simulator/environment/path.sh
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/share/simulator/environment/path.dsv
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/share/simulator/local_setup.bash
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/share/simulator/local_setup.sh
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/share/simulator/local_setup.zsh
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/share/simulator/local_setup.dsv
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/share/simulator/package.dsv
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/share/ament_index/resource_index/packages/simulator
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/share/simulator/cmake/simulatorConfig.cmake
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/share/simulator/cmake/simulatorConfig-version.cmake
+-- Up-to-date: /home/subin/subin_ws/ADS_Mission_Normal/install/simulator/share/simulator/package.xml

@@ -1,0 +1,76 @@
+[0.121s] Invoking command in '/home/subin/subin_ws/ADS_Mission_Normal/build/evaluation': AMENT_PREFIX_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/simulator:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/mission_manager:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/evaluation:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/autonomous_driving:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/ad_msgs:/home/subin/subin_ws/ADS_Final_MissionHard/install/simulator:/home/subin/subin_ws/ADS_Final_MissionHard/install/mission_manager:/home/subin/subin_ws/ADS_Final_MissionHard/install/evaluation:/home/subin/subin_ws/ADS_Final_MissionHard/install/autonomous_driving:/home/subin/subin_ws/ADS_Final_MissionHard/install/ad_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake /home/subin/subin_ws/ADS_Mission_Normal/src/app/evaluation -DCMAKE_INSTALL_PREFIX=/home/subin/subin_ws/ADS_Mission_Normal/install/evaluation
+[0.279s] -- The C compiler identification is GNU 11.4.0
+[0.739s] -- The CXX compiler identification is GNU 11.4.0
+[1.221s] -- Detecting C compiler ABI info
+[1.431s] -- Detecting C compiler ABI info - done
+[1.437s] -- Check for working C compiler: /usr/bin/cc - skipped
+[1.438s] -- Detecting C compile features
+[1.438s] -- Detecting C compile features - done
+[1.442s] -- Detecting CXX compiler ABI info
+[1.660s] -- Detecting CXX compiler ABI info - done
+[1.667s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[1.667s] -- Detecting CXX compile features
+[1.668s] -- Detecting CXX compile features - done
+[1.670s] -- Found ament_cmake: 1.3.12 (/opt/ros/humble/share/ament_cmake/cmake)
+[1.849s] -- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter 
+[1.947s] -- Found rclcpp: 16.0.16 (/opt/ros/humble/share/rclcpp/cmake)
+[2.165s] -- Found rosidl_generator_c: 3.1.7 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+[2.169s] -- Found rosidl_adapter: 3.1.7 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[2.176s] -- Found rosidl_generator_cpp: 3.1.7 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+[2.186s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[2.199s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[2.237s] -- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+[2.240s] -- Found rmw_fastrtps_cpp: 6.2.9 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+[3.306s] -- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found version "3.0.2")  
+[4.385s] -- Found FastRTPS: /opt/ros/humble/include  
+[6.714s] -- Using RMW implementation 'rmw_fastrtps_cpp' as default
+[6.722s] -- Looking for pthread.h
+[6.944s] -- Looking for pthread.h - found
+[6.945s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+[7.192s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+[7.194s] -- Found Threads: TRUE  
+[7.245s] -- Found ad_msgs: 0.0.0 (/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs/share/ad_msgs/cmake)
+[7.329s] -- Found rviz_2d_overlay_msgs: 1.4.0 (/opt/ros/humble/share/rviz_2d_overlay_msgs/cmake)
+[7.340s] -- Found tf2: 0.25.17 (/opt/ros/humble/share/tf2/cmake)
+[7.347s] -- Found tf2_ros: 0.25.17 (/opt/ros/humble/share/tf2_ros/cmake)
+[7.432s] -- Found tf2_geometry_msgs: 0.25.17 (/opt/ros/humble/share/tf2_geometry_msgs/cmake)
+[7.516s] -- Found eigen3_cmake_module: 0.1.1 (/opt/ros/humble/share/eigen3_cmake_module/cmake)
+[7.517s] -- Found Eigen3: TRUE (found version "3.4.0") 
+[7.517s] -- Ensuring Eigen3 include directory is part of orocos-kdl CMake target
+[7.527s] -- Found Boost: /usr/lib/x86_64-linux-gnu/cmake/Boost-1.74.0/BoostConfig.cmake (found version "1.74.0") found components: system filesystem 
+[7.591s] -- Configuring done
+[7.605s] -- Generating done
+[7.611s] -- Build files have been written to: /home/subin/subin_ws/ADS_Mission_Normal/build/evaluation
+[7.623s] Invoked command in '/home/subin/subin_ws/ADS_Mission_Normal/build/evaluation' returned '0': AMENT_PREFIX_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/simulator:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/mission_manager:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/evaluation:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/autonomous_driving:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/ad_msgs:/home/subin/subin_ws/ADS_Final_MissionHard/install/simulator:/home/subin/subin_ws/ADS_Final_MissionHard/install/mission_manager:/home/subin/subin_ws/ADS_Final_MissionHard/install/evaluation:/home/subin/subin_ws/ADS_Final_MissionHard/install/autonomous_driving:/home/subin/subin_ws/ADS_Final_MissionHard/install/ad_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake /home/subin/subin_ws/ADS_Mission_Normal/src/app/evaluation -DCMAKE_INSTALL_PREFIX=/home/subin/subin_ws/ADS_Mission_Normal/install/evaluation
+[7.625s] Invoking command in '/home/subin/subin_ws/ADS_Mission_Normal/build/evaluation': AMENT_PREFIX_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/simulator:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/mission_manager:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/evaluation:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/autonomous_driving:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/ad_msgs:/home/subin/subin_ws/ADS_Final_MissionHard/install/simulator:/home/subin/subin_ws/ADS_Final_MissionHard/install/mission_manager:/home/subin/subin_ws/ADS_Final_MissionHard/install/evaluation:/home/subin/subin_ws/ADS_Final_MissionHard/install/autonomous_driving:/home/subin/subin_ws/ADS_Final_MissionHard/install/ad_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /home/subin/subin_ws/ADS_Mission_Normal/build/evaluation -- -j22 -l22
+[7.671s] [ 33%] [32mBuilding CXX object CMakeFiles/evaluation.dir/src/evaluation_node.cpp.o[0m
+[7.672s] [ 66%] [32mBuilding CXX object CMakeFiles/evaluation.dir/home/subin/subin_ws/ADS_Mission_Normal/src/bsw/system/interface/interface_lane.cpp.o[0m
+[8.565s] [01m[K/home/subin/subin_ws/ADS_Mission_Normal/src/bsw/system/interface/interface_lane.cpp:[m[K In member function ‘[01m[Kbool SLanes::ImportLaneCsvFile(std::string)[m[K’:
+[8.566s] [01m[K/home/subin/subin_ws/ADS_Mission_Normal/src/bsw/system/interface/interface_lane.cpp:26:9:[m[K [01;35m[Kwarning: [m[Kunused variable ‘[01m[KnLaneID[m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html#index-Wunused-variable-Wunused-variable]8;;[m[K]
+[8.566s]    26 |     int [01;35m[KnLaneID[m[K = 0;
+[8.566s]       |         [01;35m[K^~~~~~~[m[K
+[27.539s] [100%] [32m[1mLinking CXX executable evaluation[0m
+[28.777s] [100%] Built target evaluation
+[28.793s] Invoked command in '/home/subin/subin_ws/ADS_Mission_Normal/build/evaluation' returned '0': AMENT_PREFIX_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/simulator:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/mission_manager:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/evaluation:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/autonomous_driving:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/ad_msgs:/home/subin/subin_ws/ADS_Final_MissionHard/install/simulator:/home/subin/subin_ws/ADS_Final_MissionHard/install/mission_manager:/home/subin/subin_ws/ADS_Final_MissionHard/install/evaluation:/home/subin/subin_ws/ADS_Final_MissionHard/install/autonomous_driving:/home/subin/subin_ws/ADS_Final_MissionHard/install/ad_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --build /home/subin/subin_ws/ADS_Mission_Normal/build/evaluation -- -j22 -l22
+[28.795s] Invoking command in '/home/subin/subin_ws/ADS_Mission_Normal/build/evaluation': AMENT_PREFIX_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/simulator:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/mission_manager:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/evaluation:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/autonomous_driving:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/ad_msgs:/home/subin/subin_ws/ADS_Final_MissionHard/install/simulator:/home/subin/subin_ws/ADS_Final_MissionHard/install/mission_manager:/home/subin/subin_ws/ADS_Final_MissionHard/install/evaluation:/home/subin/subin_ws/ADS_Final_MissionHard/install/autonomous_driving:/home/subin/subin_ws/ADS_Final_MissionHard/install/ad_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /home/subin/subin_ws/ADS_Mission_Normal/build/evaluation
+[28.806s] -- Install configuration: ""
+[28.807s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/lib/evaluation/evaluation
+[28.812s] -- Set runtime path of "/home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/lib/evaluation/evaluation" to ""
+[28.812s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/share/evaluation/launch
+[28.813s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/share/evaluation/launch/evaluation.launch.xml
+[28.815s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/share/ament_index/resource_index/package_run_dependencies/evaluation
+[28.816s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/share/ament_index/resource_index/parent_prefix_path/evaluation
+[28.816s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/share/evaluation/environment/ament_prefix_path.sh
+[28.816s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/share/evaluation/environment/ament_prefix_path.dsv
+[28.817s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/share/evaluation/environment/path.sh
+[28.817s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/share/evaluation/environment/path.dsv
+[28.817s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/share/evaluation/local_setup.bash
+[28.818s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/share/evaluation/local_setup.sh
+[28.818s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/share/evaluation/local_setup.zsh
+[28.818s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/share/evaluation/local_setup.dsv
+[28.819s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/share/evaluation/package.dsv
+[28.820s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/share/ament_index/resource_index/packages/evaluation
+[28.821s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/share/evaluation/cmake/evaluationConfig.cmake
+[28.821s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/share/evaluation/cmake/evaluationConfig-version.cmake
+[28.822s] -- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/evaluation/share/evaluation/package.xml
+[28.825s] Invoked command in '/home/subin/subin_ws/ADS_Mission_Normal/build/evaluation' returned '0': AMENT_PREFIX_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/simulator:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/mission_manager:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/evaluation:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/autonomous_driving:/home/subin/subin_ws/Autonomous_Driving_Software_Final/install/ad_msgs:/home/subin/subin_ws/ADS_Final_MissionHard/install/simulator:/home/subin/subin_ws/ADS_Final_MissionHard/install/mission_manager:/home/subin/subin_ws/ADS_Final_MissionHard/install/evaluation:/home/subin/subin_ws/ADS_Final_MissionHard/install/autonomous_driving:/home/subin/subin_ws/ADS_Final_MissionHard/install/ad_msgs:/opt/ros/humble LD_LIBRARY_PATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs/lib:${LD_LIBRARY_PATH} PYTHONPATH=/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs/local/lib/python3.10/dist-packages:${PYTHONPATH} /usr/bin/cmake --install /home/subin/subin_ws/ADS_Mission_Normal/build/evaluation

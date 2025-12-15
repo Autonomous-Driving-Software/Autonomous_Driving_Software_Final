@@ -1,0 +1,72 @@
+-- The C compiler identification is GNU 11.4.0
+-- The CXX compiler identification is GNU 11.4.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found ament_cmake: 1.3.12 (/opt/ros/humble/share/ament_cmake/cmake)
+-- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter 
+-- Found rclcpp: 16.0.16 (/opt/ros/humble/share/rclcpp/cmake)
+-- Found rosidl_generator_c: 3.1.7 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+-- Found rosidl_adapter: 3.1.7 (/opt/ros/humble/share/rosidl_adapter/cmake)
+-- Found rosidl_generator_cpp: 3.1.7 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+-- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+-- Found rmw_fastrtps_cpp: 6.2.9 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+-- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found version "3.0.2")  
+-- Found FastRTPS: /opt/ros/humble/include  
+-- Using RMW implementation 'rmw_fastrtps_cpp' as default
+-- Looking for pthread.h
+-- Looking for pthread.h - found
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE  
+-- Found ad_msgs: 0.0.0 (/home/subin/subin_ws/ADS_Mission_Normal/install/ad_msgs/share/ad_msgs/cmake)
+-- Found tf2: 0.25.17 (/opt/ros/humble/share/tf2/cmake)
+-- Found tf2_ros: 0.25.17 (/opt/ros/humble/share/tf2_ros/cmake)
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/subin/subin_ws/ADS_Mission_Normal/build/autonomous_driving
+[ 14%] [32mBuilding CXX object CMakeFiles/planning_node.dir/src/planning_node.cpp.o[0m
+[ 28%] [32mBuilding CXX object CMakeFiles/planning_node.dir/src/frenet_converter.cpp.o[0m
+[ 42%] [32mBuilding CXX object CMakeFiles/control_node.dir/src/control_node.cpp.o[0m
+[ 57%] [32mBuilding CXX object CMakeFiles/perception_node.dir/src/perception_node.cpp.o[0m
+[ 71%] [32m[1mLinking CXX executable perception_node[0m
+[ 71%] Built target perception_node
+[ 85%] [32m[1mLinking CXX executable control_node[0m
+[ 85%] Built target control_node
+[100%] [32m[1mLinking CXX executable planning_node[0m
+[100%] Built target planning_node
+-- Install configuration: ""
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/lib/autonomous_driving/perception_node
+-- Set runtime path of "/home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/lib/autonomous_driving/perception_node" to ""
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/lib/autonomous_driving/planning_node
+-- Set runtime path of "/home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/lib/autonomous_driving/planning_node" to ""
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/lib/autonomous_driving/control_node
+-- Set runtime path of "/home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/lib/autonomous_driving/control_node" to ""
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/autonomous_driving/launch
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/autonomous_driving/launch/autonomous_driving.launch.xml
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/autonomous_driving/launch/manual_driving.launch.xml
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/lib/autonomous_driving/simultaneous_inputs.py
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/ament_index/resource_index/package_run_dependencies/autonomous_driving
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/ament_index/resource_index/parent_prefix_path/autonomous_driving
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/autonomous_driving/environment/ament_prefix_path.sh
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/autonomous_driving/environment/ament_prefix_path.dsv
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/autonomous_driving/environment/path.sh
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/autonomous_driving/environment/path.dsv
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/autonomous_driving/local_setup.bash
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/autonomous_driving/local_setup.sh
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/autonomous_driving/local_setup.zsh
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/autonomous_driving/local_setup.dsv
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/autonomous_driving/package.dsv
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/ament_index/resource_index/packages/autonomous_driving
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/autonomous_driving/cmake/autonomous_drivingConfig.cmake
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/autonomous_driving/cmake/autonomous_drivingConfig-version.cmake
+-- Installing: /home/subin/subin_ws/ADS_Mission_Normal/install/autonomous_driving/share/autonomous_driving/package.xml

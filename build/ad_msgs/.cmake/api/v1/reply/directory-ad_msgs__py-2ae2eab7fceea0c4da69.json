@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "ad_msgs__py",
+		"source" : "/home/subin/subin_ws/ADS_Mission_Normal/build/ad_msgs/ad_msgs__py"
+	}
+}

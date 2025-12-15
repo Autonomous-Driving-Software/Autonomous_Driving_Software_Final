@@ -1,0 +1,25 @@
+[01m[K/home/subin/subin_ws/ADS_Mission_Normal/src/app/autonomous_driving/src/planning_node.cpp:[m[K In member function ‘[01m[Kvoid PlanningNode::Init(const rclcpp::Time&)[m[K’:
+[01m[K/home/subin/subin_ws/ADS_Mission_Normal/src/app/autonomous_driving/src/planning_node.cpp:94:45:[m[K [01;35m[Kwarning: [m[Kunused parameter ‘[01m[Kcurrent_time[m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html#index-Wunused-parameter-Wunused-parameter]8;;[m[K]
+   94 | void PlanningNode::Init([01;35m[Kconst rclcpp::Time &current_time[m[K) {
+      |                         [01;35m[K~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~[m[K
+[01m[K/home/subin/subin_ws/ADS_Mission_Normal/src/app/autonomous_driving/src/control_node.cpp:[m[K In member function ‘[01m[Kvoid ControlNode::Init(const rclcpp::Time&)[m[K’:
+[01m[K/home/subin/subin_ws/ADS_Mission_Normal/src/app/autonomous_driving/src/control_node.cpp:117:44:[m[K [01;35m[Kwarning: [m[Kunused parameter ‘[01m[Kcurrent_time[m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html#index-Wunused-parameter-Wunused-parameter]8;;[m[K]
+  117 | void ControlNode::Init([01;35m[Kconst rclcpp::Time &current_time[m[K) {}
+      |                        [01;35m[K~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~[m[K
+[01m[K/home/subin/subin_ws/ADS_Mission_Normal/src/app/autonomous_driving/src/control_node.cpp:[m[K In member function ‘[01m[Kdouble ControlNode::LateralControl(const interface::VehicleState&, const interface::PolyfitLane&, const AutonomousDrivingConfig&)[m[K’:
+[01m[K/home/subin/subin_ws/ADS_Mission_Normal/src/app/autonomous_driving/src/control_node.cpp:244:67:[m[K [01;35m[Kwarning: [m[Kunused parameter ‘[01m[Kvehicle_state[m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html#index-Wunused-parameter-Wunused-parameter]8;;[m[K]
+  244 | double ControlNode::LateralControl([01;35m[Kconst interface::VehicleState &vehicle_state[m[K, const interface::PolyfitLane &driving_way_real, const AutonomousDrivingConfig &cfg) {
+      |                                    [01;35m[K~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~[m[K
+[01m[K/home/subin/subin_ws/ADS_Mission_Normal/src/app/autonomous_driving/src/planning_node.cpp:[m[K In member function ‘[01m[Kdouble PlanningNode::VelocityPlanning(const interface::VehicleState&, const interface::Lane&, const interface::Mission&, const interface::PolyfitLane&, const PlanningNode::BehaviorContext&)[m[K’:
+[01m[K/home/subin/subin_ws/ADS_Mission_Normal/src/app/autonomous_driving/src/planning_node.cpp:456:12:[m[K [01;35m[Kwarning: [m[Kunused variable ‘[01m[Ka3[m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html#index-Wunused-variable-Wunused-variable]8;;[m[K]
+  456 |     double [01;35m[Ka3[m[K = driving_way_real.a3;
+      |            [01;35m[K^~[m[K
+[01m[K/home/subin/subin_ws/ADS_Mission_Normal/src/app/autonomous_driving/src/planning_node.cpp:458:12:[m[K [01;35m[Kwarning: [m[Kunused variable ‘[01m[Ka1[m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html#index-Wunused-variable-Wunused-variable]8;;[m[K]
+  458 |     double [01;35m[Ka1[m[K = driving_way_real.a1;
+      |            [01;35m[K^~[m[K
+[01m[K/home/subin/subin_ws/ADS_Mission_Normal/src/app/autonomous_driving/src/planning_node.cpp:459:12:[m[K [01;35m[Kwarning: [m[Kunused variable ‘[01m[Ka0[m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html#index-Wunused-variable-Wunused-variable]8;;[m[K]
+  459 |     double [01;35m[Ka0[m[K = driving_way_real.a0;
+      |            [01;35m[K^~[m[K
+[01m[K/home/subin/subin_ws/ADS_Mission_Normal/src/app/autonomous_driving/src/planning_node.cpp:440:108:[m[K [01;35m[Kwarning: [m[Kunused parameter ‘[01m[Klane_points[m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html#index-Wunused-parameter-Wunused-parameter]8;;[m[K]
+  440 | double PlanningNode::VelocityPlanning(const interface::VehicleState &vehicle_state, [01;35m[Kconst interface::Lane &lane_points[m[K, const interface::Mission &mission, const interface::PolyfitLane &driving_way_real, const BehaviorContext &ctx) {
+      |                                                                                     [01;35m[K~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~[m[K

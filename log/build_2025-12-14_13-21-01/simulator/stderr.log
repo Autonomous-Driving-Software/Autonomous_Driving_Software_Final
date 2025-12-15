@@ -1,0 +1,8 @@
+[01m[K/home/subin/subin_ws/ADS_Mission_Normal/src/bsw/system/interface/interface_lane.cpp:[m[K In member function ‘[01m[Kbool SLanes::ImportLaneCsvFile(std::string)[m[K’:
+[01m[K/home/subin/subin_ws/ADS_Mission_Normal/src/bsw/system/interface/interface_lane.cpp:26:9:[m[K [01;35m[Kwarning: [m[Kunused variable ‘[01m[KnLaneID[m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html#index-Wunused-variable-Wunused-variable]8;;[m[K]
+   26 |     int [01;35m[KnLaneID[m[K = 0;
+      |         [01;35m[K^~~~~~~[m[K
+[01m[K/home/subin/subin_ws/ADS_Mission_Normal/src/app/simulator/src/display/display_node.cpp:[m[K In member function ‘[01m[Kvoid Display::DisplayROILanes(const LanePointDataArray&, const rclcpp::Time&)[m[K’:
+[01m[K/home/subin/subin_ws/ADS_Mission_Normal/src/app/simulator/src/display/display_node.cpp:380:9:[m[K [01;35m[Kwarning: [m[Kunused variable ‘[01m[Kid[m[K’ [[01;35m[K]8;;https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html#index-Wunused-variable-Wunused-variable]8;;[m[K]
+  380 |     int [01;35m[Kid[m[K = 0;
+      |         [01;35m[K^~[m[K

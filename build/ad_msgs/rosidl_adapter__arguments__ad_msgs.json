@@ -1,0 +1,15 @@
+{
+  "package_name": "ad_msgs",
+  "non_idl_tuples": [
+    "/home/subin/subin_ws/ADS_Mission_Normal/src/rte/msg/ad_msgs:msg/VehicleState.msg",
+    "/home/subin/subin_ws/ADS_Mission_Normal/src/rte/msg/ad_msgs:msg/VehicleCommand.msg",
+    "/home/subin/subin_ws/ADS_Mission_Normal/src/rte/msg/ad_msgs:msg/Mission.msg",
+    "/home/subin/subin_ws/ADS_Mission_Normal/src/rte/msg/ad_msgs:msg/MissionObject.msg",
+    "/home/subin/subin_ws/ADS_Mission_Normal/src/rte/msg/ad_msgs:msg/MissionRegion.msg",
+    "/home/subin/subin_ws/ADS_Mission_Normal/src/rte/msg/ad_msgs:msg/MissionDisplay.msg",
+    "/home/subin/subin_ws/ADS_Mission_Normal/src/rte/msg/ad_msgs:msg/PolyfitLaneData.msg",
+    "/home/subin/subin_ws/ADS_Mission_Normal/src/rte/msg/ad_msgs:msg/LanePointData.msg",
+    "/home/subin/subin_ws/ADS_Mission_Normal/src/rte/msg/ad_msgs:msg/LanePointDataArray.msg",
+    "/home/subin/subin_ws/ADS_Mission_Normal/src/rte/msg/ad_msgs:msg/PolyfitLaneDataArray.msg"
+  ]
+}

@@ -1,0 +1,21 @@
+// generated from rosidl_adapter/resource/msg.idl.em
+// with input from ad_msgs/msg/Mission.msg
+// generated code does not contain a copyright notice
+
+#include "ad_msgs/msg/MissionObject.idl"
+
+module ad_msgs {
+  module msg {
+    struct Mission {
+      sequence<ad_msgs::msg::MissionObject> objects;
+
+      string road_condition;
+
+      string road_slope;
+
+      double speed_limit;
+
+      boolean parking;
+    };
+  };
+};
