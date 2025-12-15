@@ -3,8 +3,8 @@ build/
 install/
 log/
 
-*.cache/clangd/index
+.cache/clangd/index
 
-*.cursor 
+.cursor 
 
-*.vscode
+.vscode
