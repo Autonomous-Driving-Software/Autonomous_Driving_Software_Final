@@ -1,4 +1,0 @@
-source;share/autonomous_driving/local_setup.bash
-source;share/autonomous_driving/local_setup.dsv
-source;share/autonomous_driving/local_setup.sh
-source;share/autonomous_driving/local_setup.zsh

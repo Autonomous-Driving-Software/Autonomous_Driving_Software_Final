@@ -1,2 +1,0 @@
-MissionObject[] objects
-MissionRegion[] regions
