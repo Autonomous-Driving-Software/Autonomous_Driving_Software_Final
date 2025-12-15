@@ -24,6 +24,7 @@ find_package(std_msgs REQUIRED)
 find_package(ad_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(rviz_2d_overlay_msgs REQUIRED)
 
 ## Add include directories
 include_directories(
@@ -57,6 +58,7 @@ ament_target_dependencies(planning_node
     ad_msgs
     tf2
     tf2_ros
+    rviz_2d_overlay_msgs
 )
 
 #3. Control Node

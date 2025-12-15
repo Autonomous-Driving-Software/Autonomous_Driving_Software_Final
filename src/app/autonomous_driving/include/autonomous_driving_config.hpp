@@ -28,8 +28,8 @@ typedef struct {
     double param_max_lateral_accel{6200.0 / 1319.91}; // Fyf_max / Mass
 
     //2. Pure Pursuit 제어 파라미터
-    double param_pp_kd{3.0};
-    double param_pp_kv{0.0};
+    double param_pp_kd{5.0};
+    double param_pp_kv{0.2};
     double param_pp_kc{0.0};
 
     //3. PID 제어 파라미터
@@ -39,14 +39,16 @@ typedef struct {
     double param_brake_ratio{1.2};
 
     //4. Speed Profile Smoothing 파라미터 (Forward-Backward)
-    double param_a_max{2.0};   // 최대 가속도 [m/s²]
-    double param_a_min{-3.0};  // 최대 감속도 [m/s²] (음수)
+    double param_a_max{3.0};   // 최대 가속도 [m/s²]
+    double param_a_min{-4.0};  // 최대 감속도 [m/s²] (음수)
 
-    //5. ROI 파라미터
-    double param_m_ROIFront_param{15.0};
-    double param_m_ROIRear_param{5.0};
-    double param_m_ROILeft_param{3.0};
-    double param_m_ROIRight_param{3.0};
+    //5. ROI 파라미터 (Perception에서 lane point 필터링용)
+    // - Front/Rear: x축 방향 (앞쪽 +, 뒤쪽 -)
+    // - Left/Right: y축 방향 (왼쪽 +, 오른쪽 -)
+    double param_m_ROIFront_param{15.0};  // 앞쪽 ROI [m]
+    double param_m_ROIRear_param{5.0};    // 뒤쪽 ROI [m]
+    double param_m_ROILeft_param{3.0};    // 왼쪽 ROI [m]
+    double param_m_ROIRight_param{3.0};   // 오른쪽 ROI [m]
     std::string ref_csv_path{""};
 
     // [다훈 수정9] Control Parameters (for longitudinal control)

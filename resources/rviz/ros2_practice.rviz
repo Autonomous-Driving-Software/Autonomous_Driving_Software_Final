@@ -139,6 +139,34 @@ Visualization Manager:
           size: 150
           text size: 14
           top: 50
+        - Align Bottom: false
+          Background Alpha: 0.800000011920929
+          Background Color: 0; 0; 0
+          Class: rviz_2d_overlay_plugins/TextOverlay
+          Enabled: true
+          Foreground Alpha: 0.800000011920929
+          Foreground Color: 0; 255; 0
+          Invert Shadow: false
+          Name: PlanningInfo
+          Overtake BG Color Properties: false
+          Overtake FG Color Properties: false
+          Overtake Position Properties: false
+          Topic:
+            Depth: 5
+            Durability Policy: Volatile
+            History Policy: Keep Last
+            Reliability Policy: Reliable
+            Value: /ego/planning_overlay_text
+          Value: true
+          font: DejaVu Sans Mono
+          height: 150
+          hor_alignment: right
+          hor_dist: 20
+          line width: 2
+          text size: 14
+          ver_alignment: top
+          ver_dist: 20
+          width: 350
       Enabled: true
       Name: Info
     - Class: rviz_common/Group
@@ -201,7 +229,6 @@ Visualization Manager:
           Name: DrivingWay
           Namespaces:
             driving_way_center: true
-            driving_way_offset: true
           Topic:
             Depth: 5
             Durability Policy: Volatile
@@ -229,6 +256,7 @@ Visualization Manager:
       Name: MarkerArray
       Namespaces:
         lane_change_path: true
+        lane_change_points: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -299,6 +327,32 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /ego/dynamic_bbox
       Value: true
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Marker
+      Namespaces:
+        lane_id_text: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /ego/lane_id_text
+      Value: true
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Marker
+      Namespaces:
+        planning_info_text: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /ego/planning_info_text
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -345,7 +399,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/ThirdPersonFollower
-      Distance: 134.7124481201172
+      Distance: 68.85690307617188
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -382,4 +436,4 @@ Window Geometry:
     collapsed: true
   Width: 1920
   X: 2560
-  Y: 210
+  Y: 239

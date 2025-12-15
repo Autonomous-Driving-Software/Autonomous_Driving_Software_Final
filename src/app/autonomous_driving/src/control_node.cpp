@@ -81,6 +81,8 @@ ControlNode::ControlNode(const std::string &node_name, const rclcpp::NodeOptions
     //[다훈 수정] lateral control을 위해 driving-way subscriber 추가 (planning node에서 퍼블리시하는거)
     s_driving_way_real_ = this->create_subscription<ad_msgs::msg::PolyfitLaneData>(
         "driving_way_real", qos_profile, std::bind(&ControlNode::CallbackDrivingWay, this, std::placeholders::_1));
+    s_driving_way_points_ = this->create_subscription<ad_msgs::msg::LanePointData>(
+        "driving_way_points", qos_profile, std::bind(&ControlNode::CallbackPlannedPathPoints, this, std::placeholders::_1));
 
     //=================================================
     //Publisher init
@@ -145,9 +147,8 @@ void ControlNode::Run() {
         RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Wait for Reference Speed ...");
         return;
     }
-    //[다훈 수정] lateral control을 위해 driving_way_real 가져오기
-    if (b_is_driving_way_real_ == false) {
-        RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Wait for Driving Way ...");
+    if (b_is_driving_way_points_ == false) {
+        RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000, "Wait for Planned Path Points ...");
         return;
     }
 
@@ -186,17 +187,16 @@ void ControlNode::Run() {
         reference_speed = i_reference_speed_;
     }
 
-    // [다훈 수정] lateral control을 위해 driving_way_real 가져오기(지역변수로 복사)
-    interface::PolyfitLane driving_way_real; {
-        std::lock_guard<std::mutex> lock(mutex_driving_way_real_);
-        driving_way_real = i_driving_way_real_;
+    interface::Lane driving_way_points; {
+        std::lock_guard<std::mutex> lock(mutex_driving_way_points_);
+        driving_way_points = i_driving_way_points_;
     }
     
     //===================================================
     // Algorithm
     //===================================================
     // (1) lateral control
-    double steering_angle = ControlNode::LateralControl(vehicle_state, driving_way_real, cfg_);
+    double steering_angle = ControlNode::LateralControl(vehicle_state, driving_way_points, cfg_);
     // (2) output variables: longitudinal control
     interface::VehicleCommand vehicle_command;
 
@@ -228,48 +228,65 @@ void ControlNode::Run() {
 }
 
 //===================================================
-// LateralControl 함수 구현 
+// LateralControl 함수 구현 (Pure Pursuit with path points)
 //===================================================
-double ControlNode::LateralControl(const interface::VehicleState &vehicle_state, const interface::PolyfitLane &driving_way_real, const AutonomousDrivingConfig &cfg) {
+double ControlNode::LateralControl(const interface::VehicleState &vehicle_state, const interface::Lane &path_points, const AutonomousDrivingConfig &cfg) {
     /*
     *@brief Calculate steering using Pure Pursuit algorithm
-    * inputs: vehicle_state, driving_way_real, cfg
-    * output: steering angle (radian??)
-    * Purpose: Implement Pure Pursuit Control to calculate the steering angle based on the vehicle state and driving way
+    * inputs: vehicle_state, path_points (already local/body frame), cfg
+    * output: steering angle (radian)
     */
 
-    ///////////////////TODO///////////////////
-    //Initialize Inputs
-    double l_xd; // look-ahead distance [m]
-    double g_x, g_y; // look-ahead point coordinates [m]
-    double l_d; // distance between vehicle and look-ahead point [m]
-    //Initialize Outputs
-    double steering_angle = 0.0;
+    if (path_points.point.empty()) {
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *get_clock(), 500, "[LateralControl] No path points, steering=0");
+        return 0.0;
+    }
 
-    // Step 0: Set look-ahead distance
-    l_xd = cfg.param_pp_kd;
+    // Pure Pursuit의 look-ahead 거리
+    const double l_xd = cfg.param_pp_kd + cfg.param_pp_kv * vehicle_state.velocity + cfg.param_pp_kc;
+    //const double l_xd = cfg.param_pp_kd;
 
-    //[다훈 수정]Step 1: Get look-ahead point using look-ahead distance
-    // (g_x g_y) = (x, ax^3 + bx^2 + cx + d)|x=l_xd
-    // driving_way_real의 계수 사용
-    // step 1-1: g_x는 l_xd로 고정
-    g_x = l_xd;
-    // step 1-2: g_y는 다항식에 대입하여 계산
-    g_y = driving_way_real.a3 * pow(g_x, 3) + driving_way_real.a2 * pow(g_x, 2) + driving_way_real.a1 * g_x + driving_way_real.a0;
+    // look-ahead 지점을 path 상에서 보간
+    double target_x = path_points.point.front().x;
+    double target_y = path_points.point.front().y;
+    double accumulated = 0.0;
+    bool found_target = false;
 
-    //[다훈 수정]Step 2: The distance between vehicle position and look-ahead point
-    //l_d = sqrt(g_x² + g_y²)
-    //e_ld = g_y
-    l_d = sqrt(pow(g_x, 2) + pow(g_y, 2));
-    double e_ld = g_y; // lateral error
+    for (size_t i = 1; i < path_points.point.size(); ++i) {
+        double dx = path_points.point[i].x - path_points.point[i - 1].x;
+        double dy = path_points.point[i].y - path_points.point[i - 1].y;
+        double segment_len = std::hypot(dx, dy);
 
-    //[다훈 수정]Step 3: Calculate steering angle using Pure Pursuit formula
-    // steering_angle = atan2(2 * L * e_ld / l_d^2)
-    //1/R = 2 * e_ld / l_d^2
-    // wheel_base 멤버 변수 사용(헤더파일에 정의되어 있음)
-    steering_angle = atan2(2.0 * cfg.param_wheel_base * e_ld, (l_d * l_d));
+        accumulated += segment_len;
 
-    /////////////////////////////////////////////////
+        if (accumulated >= l_xd && segment_len > 1e-3) {
+            double ratio = (l_xd - (accumulated - segment_len)) / segment_len;
+            if (ratio < 0.0) {
+                ratio = 0.0;
+            } else if (ratio > 1.0) {
+                ratio = 1.0;
+            }
+            target_x = path_points.point[i - 1].x + ratio * dx;
+            target_y = path_points.point[i - 1].y + ratio * dy;
+            found_target = true;
+            break;
+        }
+    }
+
+    if (!found_target) {
+        target_x = path_points.point.back().x;
+        target_y = path_points.point.back().y;
+    }
+
+    double l_d = std::hypot(target_x, target_y);
+    if (l_d < 1e-3) {
+        return 0.0;
+    }
+
+    double e_ld = target_y; // 로컬 좌표계에서 y가 lateral error
+
+    double steering_angle = std::atan2(2.0 * cfg.param_wheel_base * e_ld, (l_d * l_d));
+
     return steering_angle;
 }
 
