@@ -16,4 +16,4 @@ terminator -e  " source ~/.bashrc && source install/setup.bash && ros2 launch mi
 sleep 3
 terminator -e  " source ~/.bashrc && source install/setup.bash && ros2 launch evaluation evaluation.launch.xml " &
 sleep 3
-terminator -e  " source ~/.bashrc && source install/setup.bash && ros2 launch autonomous_driving autonomous_driving.launch.xml use_manual_inputs:=false "
+terminator -e  " source ~/.bashrc && source install/setup.bash && ros2 launch autonomous_driving autonomous_driving.launch.xml use_manual_inputs:=ture "

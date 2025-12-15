@@ -19,6 +19,12 @@ ControlNode::ControlNode(const std::string &node_name, const rclcpp::NodeOptions
     this->declare_parameter("autonomous_driving/ns", "");
     this->declare_parameter("autonomous_driving/loop_rate_hz", 100.0);
     this->declare_parameter("autonomous_driving/use_manual_inputs", false);    
+    // Low-μ / slope handling parameters
+    this->declare_parameter("control/friction_mu", 0.4);           // effective friction (icy)
+    this->declare_parameter("control/slope_ff_gain", 1.0);         // feed-forward gain for pitch compensation
+    this->declare_parameter("control/slip_angle_thresh", 0.15);    // [rad]
+    this->declare_parameter("control/yaw_rate_thresh", 0.35);      // [rad/s]
+    this->declare_parameter("control/slip_scale", 0.5);            // scale accel/brake under slip
 
     ProcessParams();
 
@@ -41,6 +47,11 @@ ControlNode::ControlNode(const std::string &node_name, const rclcpp::NodeOptions
     //(2) Longitudinal control parameters
     this->get_parameter("autonomous_driving/speed_error_integral", cfg_.speed_error_integral);
     this->get_parameter("autonomous_driving/speed_error_prev", cfg_.speed_error_prev);
+    this->get_parameter("control/friction_mu", cfg_.param_friction_mu);
+    this->get_parameter("control/slope_ff_gain", cfg_.param_slope_ff_gain);
+    this->get_parameter("control/slip_angle_thresh", cfg_.param_slip_angle_thresh);
+    this->get_parameter("control/yaw_rate_thresh", cfg_.param_yaw_rate_thresh);
+    this->get_parameter("control/slip_scale", cfg_.param_slip_scale);
 
     //(3) Vehicle
     this->get_parameter("autonomous_driving/wheel_base", cfg_.param_wheel_base);
@@ -300,13 +311,34 @@ std::pair<double, double> ControlNode::LongitudinalControl(const interface::Vehi
     double u = (cfg.param_pid_kp * speed_error) + (cfg.param_pid_ki * cfg_.speed_error_integral) + (cfg.param_pid_kd * (speed_error - cfg_.speed_error_prev) / cfg.dt);
 
     cfg_.speed_error_prev = speed_error; // 이전 오차 저장
-    // [Output] Set accel_command and brake_command values
+    // Slope feed-forward (pitch>0 uphill)
+    double slope_ff = cfg.param_slope_ff_gain * 9.81 * std::sin(vehicle_state.pitch);
+    u += slope_ff * cfg.dt; // 작은 적분 보상
+
+    // Friction-circle based longitudinal limit
+    double ay_est = vehicle_state.velocity * vehicle_state.yaw_rate; // v*w ≈ lat accel
+    double mu_g = cfg.param_friction_mu * 9.81;
+    double max_ax = 0.0;
+    if (mu_g > 0.0) {
+        double rem = mu_g * mu_g - ay_est * ay_est;
+        if (rem > 0.0) max_ax = std::sqrt(rem);
+    }
+
+    // Slip mitigation
+    double slip_scale = 1.0;
+    if (std::abs(vehicle_state.slip_angle) > cfg.param_slip_angle_thresh ||
+        std::abs(vehicle_state.yaw_rate) > cfg.param_yaw_rate_thresh) {
+        slip_scale = cfg.param_slip_scale;
+    }
+
+    // [Output] Set accel_command and brake_command values with clamps
     if (u > 0) {
-        accel_command = u;
+        accel_command = std::min(u, max_ax) * slip_scale;
         brake_command = 0.0;
     } else {
+        double decel = std::min(-u, max_ax) * slip_scale;
         accel_command = 0.0;
-        brake_command = -u * cfg.param_brake_ratio; // brake ratio 곱해서 제동력 조절
+        brake_command = decel * cfg.param_brake_ratio; // brake ratio 곱해서 제동력 조절
     }
 
     ///////////////////////////////////////////////////

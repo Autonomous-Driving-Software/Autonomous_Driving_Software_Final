@@ -56,6 +56,13 @@ typedef struct {
     double speed_error_integral{0.0};
     double speed_error_prev{0.0};
 
+    // Low-μ / slope handling
+    double param_friction_mu{0.4};
+    double param_slope_ff_gain{1.0};
+    double param_slip_angle_thresh{0.15};
+    double param_yaw_rate_thresh{0.35};
+    double param_slip_scale{0.5};
+
     //////////////////////////////////////////////////
 } AutonomousDrivingConfig;
 
