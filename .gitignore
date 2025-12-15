@@ -2,3 +2,9 @@
 build/
 install/
 log/
+
+*.cache/clangd/index
+
+*.cursor 
+
+*.vscode
