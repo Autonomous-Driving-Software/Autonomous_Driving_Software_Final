@@ -231,6 +231,12 @@ class PlanningNode : public rclcpp::Node {
         rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr               p_reference_speed_;
         rclcpp::Publisher<ad_msgs::msg::LanePointData>::SharedPtr          p_driving_way_points_;
         
+        // Debug Publishers (for PlotJuggler)
+        rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr               p_d_range_;          // ego에서 동적 장애물까지 거리
+        rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr               p_safe_distance_;    // 안전 거리
+        rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr p_mu_estimated_; // 타이어-노면 마찰계수 추정값
+        rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr p_a_lat_measured_; // 횡가속도 측정값
+        
         // Visualization Publishers
         rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr       p_lane_change_target_;
         rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr  p_lane_change_path_; 

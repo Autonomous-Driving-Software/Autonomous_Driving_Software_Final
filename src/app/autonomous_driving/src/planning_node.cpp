@@ -71,6 +71,12 @@ PlanningNode::PlanningNode(const std::string &node_name, const rclcpp::NodeOptio
     p_reference_speed_ = this->create_publisher<std_msgs::msg::Float32>(
         "reference_speed", qos_profile);
     
+    // Debug Publishers (for PlotJuggler)
+    p_d_range_ = this->create_publisher<std_msgs::msg::Float32>(
+        "debug/d_range", qos_profile);
+    p_safe_distance_ = this->create_publisher<std_msgs::msg::Float32>(
+        "debug/safe_distance", qos_profile);
+    
     // Visualization Publishers
     p_lane_change_target_ = this->create_publisher<visualization_msgs::msg::Marker>(
         "lane_change_target", qos_profile);
@@ -83,6 +89,8 @@ PlanningNode::PlanningNode(const std::string &node_name, const rclcpp::NodeOptio
     // 화면 고정 오버레이 텍스트 publisher (RViz 우측 상단에 고정)
     p_overlay_text_ = this->create_publisher<rviz_2d_overlay_msgs::msg::OverlayText>(
         "planning_overlay_text", qos_profile);
+    p_mu_estimated_ = this->create_publisher<std_msgs::msg::Float32>("mu_estimated", qos_profile);
+    p_a_lat_measured_ = this->create_publisher<std_msgs::msg::Float32>("a_lat_measured", qos_profile);
 
     // Initialize
     Init(this->now());
@@ -289,7 +297,14 @@ void PlanningNode::Run() {
               << std::fixed << std::setprecision(2)
               << "Target Speed: " << reference_speed << " m/s\n"
               << "Ego Velocity: " << vehicle_state.velocity << " m/s\n"
-              << "Lane ID: " << std::to_string(ctx.current_lane_id);
+              << "Lane ID: " << std::to_string(ctx.current_lane_id) << "\n";
+    
+    if (mission.road_condition == "Ice") {
+        info_text << "Road Condition: Ice\n";
+    }
+    else{
+        info_text << "Road Condition: \n";
+    }
     
     // SCC 모드일 때 safe distance정보 추가
     if (ctx.current_mode == DrivingMode::SCC && ctx.has_dynamic_object) {
@@ -298,7 +313,7 @@ void PlanningNode::Run() {
         double ttc = (v_rel > 0.01) ? (d_range / v_rel) : 999.0;
         const double T_gap = 0.1; //안전 시간 간격 [s]
         const double D_min = 10.0; //최소 안전 거리 [m]
-        double safe_distance = T_gap*ctx.lead_velocity + D_min;
+        double safe_distance = T_gap*vehicle_state.velocity + D_min;
         
         info_text << "\n----- SCC Info -----\n"
                   << "Distance from ego to dynamic: " << d_range << " m\n"
@@ -589,6 +604,33 @@ double PlanningNode::VelocityPlanning(const interface::VehicleState &vehicle_sta
     double v_ref = mission.speed_limit * 1.0; // mission에서 직접 가져오기
 
     //=================================================
+    // 최대 횡가속도 계산
+    //=================================================
+    //1. 일단 mu 실험적으로 구하기 
+    double a_lat_max = cfg_.param_max_lateral_accel; //최대 횡가속도 기본 
+    double mu = 0.2; // 타이어-노면 마찰계수 
+    double g = 9.81; // 중력 가속도
+    
+    if (mission.road_condition == "Ice") {
+        a_lat_max = mu * g;
+    }
+    
+    //=================================================
+    //[실험용] mu 추정 및 publish
+    //=================================================
+    double a_lat_measured = std::abs(vehicle_state.velocity * vehicle_state.yaw_rate);
+    double mu_estimated = a_lat_measured / 9.81;
+    mu_estimated = std::min(mu_estimated, 1.0);
+
+    // Publish for PlotJuggler
+    std_msgs::msg::Float32 mu_msg;
+    mu_msg.data = static_cast<float>(mu_estimated);
+    p_mu_estimated_->publish(mu_msg);
+
+    std_msgs::msg::Float32 a_lat_msg;
+    a_lat_msg.data = static_cast<float>(a_lat_measured);
+    p_a_lat_measured_->publish(a_lat_msg);
+    //=================================================
     //1) 곡률 최대값 계산 → 속도 제한 (point 기반 곡률 계산)
     //     - 곡률 계산 방법: 3점 곡률 계산식 사용 
     //=================================================
@@ -615,7 +657,7 @@ double PlanningNode::VelocityPlanning(const interface::VehicleState &vehicle_sta
     const double eps = 1e-6;
     double v_kappa = v_ref;
     if (max_kappa > eps) {
-        v_kappa = std::sqrt(cfg_.param_max_lateral_accel / max_kappa);
+        v_kappa = std::sqrt(a_lat_max / max_kappa);
         v_kappa = std::min(v_kappa, v_ref);
     }
 
@@ -646,10 +688,18 @@ double PlanningNode::VelocityPlanning(const interface::VehicleState &vehicle_sta
         double v_lead = ctx.lead_velocity;
         double v_rel = v_ego - v_lead;
         double d_range = ctx.lead_s-1.0; 
-        double safe_distance = T_gap *v_lead + D_min;
+        double safe_distance = T_gap *v_ego + D_min;
         double s_to_buffer = d_range - safe_distance;
         double ttc = d_range / v_rel;       //이중제약 (ttc<2이면 완전 급제동)
 
+        // Publish d_range and safe_distance for PlotJuggler
+        std_msgs::msg::Float32 d_range_msg;
+        d_range_msg.data = static_cast<float>(d_range);
+        p_d_range_->publish(d_range_msg);
+        
+        std_msgs::msg::Float32 safe_distance_msg;
+        safe_distance_msg.data = static_cast<float>(safe_distance);
+        p_safe_distance_->publish(safe_distance_msg);
 
         if (v_rel > 0) {
             if (ttc < TTC_THRESHOLD) {
@@ -657,12 +707,12 @@ double PlanningNode::VelocityPlanning(const interface::VehicleState &vehicle_sta
             }
             else {
                 if (s_to_buffer > 0) {       
-                    double v_safe = v_lead + safe_distance / TTC_THRESHOLD;   //안전거리 아직 잘 유지 중이면 
+                    double v_safe = v_lead + s_to_buffer;   //안전거리 아직 잘 유지 중이면 
                     target_speed = std::min(v_safe, target_speed);
                     //target_speed = reference_speed;
                 }
                 else { //s_to_buffer <= 0 안전거리 안쪽으로 들어오면
-                    target_speed = std::min(v_lead - safe_distance/TTC_THRESHOLD, target_speed);
+                    target_speed = std::min(v_lead - s_to_buffer, target_speed);
                 }
             }
         }
@@ -701,6 +751,12 @@ double PlanningNode::VelocityPlanning(const interface::VehicleState &vehicle_sta
     // LANE_KEEPING 모드
     else {
         target_speed = reference_speed;
+        
+        // SCC 모드가 아닐 때는 0으로 발행 (PlotJuggler에서 깔끔하게 보임)
+        std_msgs::msg::Float32 zero_msg;
+        zero_msg.data = 0.0f;
+        p_d_range_->publish(zero_msg);
+        p_safe_distance_->publish(zero_msg);
     }
     
     //=================================================
@@ -888,7 +944,7 @@ interface::Lane PlanningNode::LaneChange(const interface::VehicleState &vehicle_
         lane_change_path_global_.clear();
 
         const double ds = 0.5;  // 0.5m 간격으로 샘플링
-        const double STABILIZATION_DISTANCE = 8.0;  // sf 이후 15m 더 연장
+        const double STABILIZATION_DISTANCE = 5.0;  // sf 이후 15m 더 연장
         double s_max = sf + STABILIZATION_DISTANCE;
         
         for (double s = 0.0; s <= s_max; s += ds) {

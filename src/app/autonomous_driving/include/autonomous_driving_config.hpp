@@ -39,8 +39,8 @@ typedef struct {
     double param_brake_ratio{1.2};
 
     //4. Speed Profile Smoothing 파라미터 (Forward-Backward)
-    double param_a_max{3.0};   // 최대 가속도 [m/s²]
-    double param_a_min{-4.0};  // 최대 감속도 [m/s²] (음수)
+    double param_a_max{2.0};   // 최대 가속도 [m/s²]
+    double param_a_min{-3.0};  // 최대 감속도 [m/s²] (음수)
 
     //5. ROI 파라미터 (Perception에서 lane point 필터링용)
     // - Front/Rear: x축 방향 (앞쪽 +, 뒤쪽 -)
