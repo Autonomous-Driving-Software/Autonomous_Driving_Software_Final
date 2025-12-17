@@ -19,6 +19,10 @@ ControlNode::ControlNode(const std::string &node_name, const rclcpp::NodeOptions
     this->declare_parameter("autonomous_driving/ns", "");
     this->declare_parameter("autonomous_driving/loop_rate_hz", 100.0);
     this->declare_parameter("autonomous_driving/use_manual_inputs", false);    
+    this->declare_parameter("control/pp_ice_lookahead_scale", 1.8);
+    this->declare_parameter("control/pp_ice_steer_scale", 0.6);
+    this->declare_parameter("control/slope_ff_up", 0.7);
+    this->declare_parameter("control/slope_ff_down", 0.5);
 
     ProcessParams();
 
@@ -33,6 +37,8 @@ ControlNode::ControlNode(const std::string &node_name, const rclcpp::NodeOptions
     this->get_parameter("autonomous_driving/pure_pursuit_kd", cfg_.param_pp_kd);
     this->get_parameter("autonomous_driving/pure_pursuit_kv", cfg_.param_pp_kv);
     this->get_parameter("autonomous_driving/pure_pursuit_kc", cfg_.param_pp_kc);
+    this->get_parameter("control/pp_ice_lookahead_scale", cfg_.param_pp_ice_lookahead_scale);
+    this->get_parameter("control/pp_ice_steer_scale", cfg_.param_pp_ice_steer_scale);
     this->get_parameter("autonomous_driving/pid_kp", cfg_.param_pid_kp);
     this->get_parameter("autonomous_driving/pid_ki", cfg_.param_pid_ki);
     this->get_parameter("autonomous_driving/pid_kd", cfg_.param_pid_kd);
@@ -41,6 +47,8 @@ ControlNode::ControlNode(const std::string &node_name, const rclcpp::NodeOptions
     //(2) Longitudinal control parameters
     this->get_parameter("autonomous_driving/speed_error_integral", cfg_.speed_error_integral);
     this->get_parameter("autonomous_driving/speed_error_prev", cfg_.speed_error_prev);
+    this->get_parameter("control/slope_ff_up", cfg_.param_slope_ff_up);
+    this->get_parameter("control/slope_ff_down", cfg_.param_slope_ff_down);
 
     //(3) Vehicle
     this->get_parameter("autonomous_driving/wheel_base", cfg_.param_wheel_base);
@@ -196,7 +204,7 @@ void ControlNode::Run() {
     // Algorithm
     //===================================================
     // (1) lateral control
-    double steering_angle = ControlNode::LateralControl(vehicle_state, driving_way_points, cfg_);
+    double steering_angle = ControlNode::LateralControl(vehicle_state, driving_way_points, mission, cfg_);
     // (2) output variables: longitudinal control
     interface::VehicleCommand vehicle_command;
 
@@ -208,7 +216,7 @@ void ControlNode::Run() {
     std::pair<double, double> accel_brake_command;
 
     // longitudinal control
-    accel_brake_command = ControlNode::LongitudinalControl(vehicle_state, reference_speed, cfg_);
+    accel_brake_command = ControlNode::LongitudinalControl(vehicle_state, reference_speed, mission, cfg_);
 
     // [다훈 수정11.27]longitudinal control 결과를 vehicle_command에 반영 (이거 빠져서 속도가 계속 들어간 듯)
     vehicle_command.accel = accel_brake_command.first;
@@ -230,7 +238,7 @@ void ControlNode::Run() {
 //===================================================
 // LateralControl 함수 구현 (Pure Pursuit with path points)
 //===================================================
-double ControlNode::LateralControl(const interface::VehicleState &vehicle_state, const interface::Lane &path_points, const AutonomousDrivingConfig &cfg) {
+double ControlNode::LateralControl(const interface::VehicleState &vehicle_state, const interface::Lane &path_points, const interface::Mission &mission, const AutonomousDrivingConfig &cfg) {
     /*
     *@brief Calculate steering using Pure Pursuit algorithm
     * inputs: vehicle_state, path_points (already local/body frame), cfg
@@ -242,8 +250,11 @@ double ControlNode::LateralControl(const interface::VehicleState &vehicle_state,
         return 0.0;
     }
 
-    // Pure Pursuit의 look-ahead 거리
-    const double l_xd = cfg.param_pp_kd + cfg.param_pp_kv * vehicle_state.velocity + cfg.param_pp_kc;
+    // Pure Pursuit의 look-ahead 거리 (빙판길이면 더 길게 잡아 조향을 부드럽게)
+    double l_xd = cfg.param_pp_kd + cfg.param_pp_kv * vehicle_state.velocity + cfg.param_pp_kc;
+    if (mission.road_condition == "Ice") {
+        l_xd *= cfg.param_pp_ice_lookahead_scale;
+    }
     //const double l_xd = cfg.param_pp_kd;
 
     // look-ahead 지점을 path 상에서 보간
@@ -286,6 +297,9 @@ double ControlNode::LateralControl(const interface::VehicleState &vehicle_state,
     double e_ld = target_y; // 로컬 좌표계에서 y가 lateral error
 
     double steering_angle = std::atan2(2.0 * cfg.param_wheel_base * e_ld, (l_d * l_d));
+    if (mission.road_condition == "Ice") {
+        steering_angle *= cfg.param_pp_ice_steer_scale; // 급조향 완화
+    }
 
     return steering_angle;
 }
@@ -293,7 +307,7 @@ double ControlNode::LateralControl(const interface::VehicleState &vehicle_state,
 //===================================================
 // LongitudinalControl 함수 구현 
 //===================================================
-std::pair<double, double> ControlNode::LongitudinalControl(const interface::VehicleState &vehicle_state, const double &reference_speed, const AutonomousDrivingConfig &cfg) {
+std::pair<double, double> ControlNode::LongitudinalControl(const interface::VehicleState &vehicle_state, const double &reference_speed, const interface::Mission &mission, const AutonomousDrivingConfig &cfg) {
     /**
      * @brief Calculate the acceleration and brake commands using PID control
      * inputs: vehicle_state, reference_speed
@@ -315,6 +329,15 @@ std::pair<double, double> ControlNode::LongitudinalControl(const interface::Vehi
     // [PID Control] Calculate acceleration, brake commands using PID formula
     // Parameters of PID is initialized in autonomous_driving.hpp: param_pid_kp_, param_pid_ki_, param_pid_kd_
     double u = (cfg.param_pid_kp * speed_error) + (cfg.param_pid_ki * cfg_.speed_error_integral) + (cfg.param_pid_kd * (speed_error - cfg_.speed_error_prev) / cfg.dt);
+
+    // Mission-based slope feed-forward (Up/Down)
+    double slope_ff = 0.0;
+    if (mission.road_slope == "Up") {
+        slope_ff = cfg.param_slope_ff_up;          // uphill needs extra drive
+    } else if (mission.road_slope == "Down") {
+        slope_ff = -cfg.param_slope_ff_down;       // downhill bias toward braking
+    }
+    u += slope_ff;
 
     cfg_.speed_error_prev = speed_error; // 이전 오차 저장
     // [Output] Set accel_command and brake_command values

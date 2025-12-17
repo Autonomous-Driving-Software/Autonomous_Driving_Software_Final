@@ -88,18 +88,20 @@ class ControlNode : public rclcpp::Node {
         * @brief Calculate steering angle using pure pursuit
         * @param vehicle_state Vehicle state (interface)
         * @param path_points Planned path points (interface)
+        * @param mission Mission info (road condition for ice handling)
         * @return Steering angle
         */
-        double LateralControl(const interface::VehicleState &vehicle_state, const interface::Lane &path_points, const AutonomousDrivingConfig &cfg);
+        double LateralControl(const interface::VehicleState &vehicle_state, const interface::Lane &path_points, const interface::Mission &mission, const AutonomousDrivingConfig &cfg);
 
         /** -algorithm::LongitudinalControl()
          * @brief Calculate acceleration and brake using PID control
          * @param vehicle_state Vehicle state (interface)
          * @param reference_speed Reference speed (double)
+         * @param mission Mission info (slope, etc.)
          * @return Pair of acceleration and brake (std::pair<double, double>)
 
         */
-        std::pair<double, double> LongitudinalControl(const interface::VehicleState &vehicle_state, const double &reference_speed, const AutonomousDrivingConfig &cfg);
+        std::pair<double, double> LongitudinalControl(const interface::VehicleState &vehicle_state, const double &reference_speed, const interface::Mission &mission, const AutonomousDrivingConfig &cfg);
 
 
         //------------------------------------------------------//

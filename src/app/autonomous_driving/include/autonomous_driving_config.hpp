@@ -31,6 +31,8 @@ typedef struct {
     double param_pp_kd{5.0};
     double param_pp_kv{0.2};
     double param_pp_kc{0.0};
+    double param_pp_ice_lookahead_scale{1.5}; // 빙판길 시 look-ahead 확대
+    double param_pp_ice_steer_scale{0.7};     // 빙판길 시 조향 완화 스케일
 
     //3. PID 제어 파라미터
     double param_pid_kp{5.0};
@@ -41,6 +43,8 @@ typedef struct {
     //4. Speed Profile Smoothing 파라미터 (Forward-Backward)
     double param_a_max{2.0};   // 최대 가속도 [m/s²]
     double param_a_min{-3.0};  // 최대 감속도 [m/s²] (음수)
+    double param_slope_ff_up{0.6};     // uphill feed-forward accel [m/s²]
+    double param_slope_ff_down{0.6};   // downhill feed-forward brake [m/s²]
 
     //5. ROI 파라미터 (Perception에서 lane point 필터링용)
     // - Front/Rear: x축 방향 (앞쪽 +, 뒤쪽 -)
