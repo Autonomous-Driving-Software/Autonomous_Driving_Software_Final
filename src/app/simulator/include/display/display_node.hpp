@@ -101,6 +101,8 @@ class Display : public rclcpp::Node {
                             const ad_msgs::msg::VehicleState& vehicle_state,
                             const rclcpp::Time& current_time,
                             const DisplayConfig& cfg);
+        void DisplayROIArea(const rclcpp::Time& current_time,
+                            const DisplayConfig& cfg);
         void DisplayROILanes(const ad_msgs::msg::LanePointDataArray& roi_lanes,
                              const rclcpp::Time& current_time);
         void DisplayLanePoints(const ad_msgs::msg::LanePointData& lane_points,
@@ -150,6 +152,7 @@ class Display : public rclcpp::Node {
         rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr                p_ego_vehicle_velocity_;
         rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr  p_csv_lanes_marker_;
         rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr       p_lane_points_marker_;
+        rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr       p_roi_area_marker_;
         rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr  p_roi_lanes_marker_;
         rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr  p_poly_lanes_marker_;
         rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr  p_driving_way_marker_;
@@ -172,6 +175,7 @@ class Display : public rclcpp::Node {
         // Global Variable
         double time_vehicle_marker_ = 0.0;
         double time_csv_lanes_marker_ = 0.0;
+        double time_roi_area_marker_ = 0.0;
         double time_roi_lanes_marker_ = 0.0;
         double time_lane_points_marker_ = 0.0;
         double time_poly_lanes_marker_ = 0.0;

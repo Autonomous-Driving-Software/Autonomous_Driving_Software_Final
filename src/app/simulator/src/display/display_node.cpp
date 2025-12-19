@@ -27,10 +27,16 @@ Display::Display(const std::string& node_name, const rclcpp::NodeOptions& option
     // Parameter init      
     this->declare_parameter("display/ns", "");
     this->declare_parameter("display/loop_rate_hz", 30.0);
+    this->declare_parameter("display/ROI_front", 20.0);
+    this->declare_parameter("display/ROI_rear", 5.0);
+    this->declare_parameter("display/ROI_left", 4.0);
+    this->declare_parameter("display/ROI_right", 4.0);
     ProcessParams();
     
     RCLCPP_INFO(this->get_logger(), "vehicle_namespace: %s", cfg_.vehicle_namespace.c_str());
     RCLCPP_INFO(this->get_logger(), "loop_rate_hz: %f", cfg_.loop_rate_hz);
+    RCLCPP_INFO(this->get_logger(), "ROI: front %.2f, rear %.2f, left %.2f, right %.2f",
+                cfg_.ROI_front, cfg_.ROI_rear, cfg_.ROI_left, cfg_.ROI_right);
     
     std::string dir(getenv("PWD"));
     std::string mesh_path("/resources/meshes");
@@ -64,6 +70,8 @@ Display::Display(const std::string& node_name, const rclcpp::NodeOptions& option
         "csv_lanes_marker", qos_profile);
     p_lane_points_marker_ = this->create_publisher<visualization_msgs::msg::Marker> (
         "lane_points_marker", qos_profile);
+    p_roi_area_marker_ = this->create_publisher<visualization_msgs::msg::Marker> (
+        "ROI_area_marker", qos_profile);
     p_roi_lanes_marker_ = this->create_publisher<visualization_msgs::msg::MarkerArray> (
         "ROI_lanes_marker", qos_profile);
     p_poly_lanes_marker_ = this->create_publisher<visualization_msgs::msg::MarkerArray> (
@@ -84,6 +92,10 @@ Display::~Display() {}
 void Display::ProcessParams() {
     this->get_parameter("display/ns", cfg_.vehicle_namespace);
     this->get_parameter("display/loop_rate_hz", cfg_.loop_rate_hz);
+    this->get_parameter("display/ROI_front", cfg_.ROI_front);
+    this->get_parameter("display/ROI_rear", cfg_.ROI_rear);
+    this->get_parameter("display/ROI_left", cfg_.ROI_left);
+    this->get_parameter("display/ROI_right", cfg_.ROI_right);
 }
 
 void Display::Run() {
@@ -147,6 +159,11 @@ void Display::Run() {
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - // 
     if (b_is_vehicle_state_ == true) {
         DisplayVehicle(vehicle_state, current_time, cfg_);
+
+        if ((current_time.seconds() - time_roi_area_marker_) > 0.2) {
+            time_roi_area_marker_ = current_time.seconds();
+            DisplayROIArea(current_time, cfg_);
+        }
 
         if (b_is_mission_ == true) {
             DisplayMission(mission, vehicle_state, current_time, cfg_);
@@ -374,6 +391,51 @@ void Display::DisplayMission(const ad_msgs::msg::MissionDisplay& mission,
     p_mission_marker_->publish(mission_marker_array);
 }
 
+void Display::DisplayROIArea(const rclcpp::Time& current_time,
+                             const DisplayConfig& cfg) {
+    visualization_msgs::msg::Marker roi_marker;
+    roi_marker.header.frame_id = cfg.vehicle_namespace + "/body";
+    roi_marker.header.stamp = current_time;
+
+    roi_marker.ns = "ROI_area";
+    roi_marker.id = 0;
+
+    roi_marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    roi_marker.action = visualization_msgs::msg::Marker::ADD;
+
+    roi_marker.color.r = 1.0f;
+    roi_marker.color.g = 0.5f;
+    roi_marker.color.b = 0.0f;
+    roi_marker.color.a = 0.8f;
+    roi_marker.scale.x = 0.2;
+    roi_marker.lifetime = rclcpp::Duration(0, int64_t(0.2*1e9));
+
+    geometry_msgs::msg::Point point;
+
+    point.x = cfg.ROI_front;
+    point.y = cfg.ROI_left;
+    point.z = 0.02;
+    roi_marker.points.push_back(point);
+
+    point.x = -cfg.ROI_rear;
+    point.y = cfg.ROI_left;
+    roi_marker.points.push_back(point);
+
+    point.x = -cfg.ROI_rear;
+    point.y = -cfg.ROI_right;
+    roi_marker.points.push_back(point);
+
+    point.x = cfg.ROI_front;
+    point.y = -cfg.ROI_right;
+    roi_marker.points.push_back(point);
+
+    point.x = cfg.ROI_front;
+    point.y = cfg.ROI_left;
+    roi_marker.points.push_back(point);
+
+    p_roi_area_marker_->publish(roi_marker);
+}
+
 void Display::DisplayROILanes(const ad_msgs::msg::LanePointDataArray& roi_lanes,
                               const rclcpp::Time& current_time) {
     visualization_msgs::msg::MarkerArray markerArray;
@@ -520,6 +582,9 @@ void Display::DisplayDrivingWay(const ad_msgs::msg::PolyfitLaneData& driving_way
                                 const rclcpp::Time& current_time,
                                 const double& interval, const double& ROILength) {
 
+    const bool is_unknown = (driving_way.id == "driving_way_unknown");
+    const bool is_lost = (driving_way.id == "driving_way_lost");
+
     double a0 = driving_way.a0;
     double a1 = driving_way.a1;
     double a2 = driving_way.a2;
@@ -554,10 +619,22 @@ void Display::DisplayDrivingWay(const ad_msgs::msg::PolyfitLaneData& driving_way
         marker.pose.orientation.y = 0.0;
         marker.pose.orientation.z = 0.1;
         marker.pose.orientation.w = 1.0;
-        marker.color.r = 1.0f;
-        marker.color.g = 1.0f;
-        marker.color.b = 0.0f;
-        marker.color.a = 1.0;
+        if (is_unknown) {
+            marker.color.r = 1.0f;
+            marker.color.g = 0.2f;
+            marker.color.b = 0.2f;
+            marker.color.a = 0.7f;
+        } else if (is_lost) {
+            marker.color.r = 1.0f;
+            marker.color.g = 0.4f;
+            marker.color.b = 0.0f;
+            marker.color.a = 0.9f;
+        } else {
+            marker.color.r = 1.0f;
+            marker.color.g = 1.0f;
+            marker.color.b = 0.0f;
+            marker.color.a = 1.0f;
+        }
         marker.scale.x = 0.1;
         marker.scale.y = 0.1;
         marker.scale.z = 0.1;
@@ -565,6 +642,35 @@ void Display::DisplayDrivingWay(const ad_msgs::msg::PolyfitLaneData& driving_way
 
         markerArray.markers.push_back(marker);
         x += interval;
+    }
+
+    if (is_unknown || is_lost) {
+        visualization_msgs::msg::Marker text_marker;
+        text_marker.header.frame_id = driving_way.frame_id;
+        text_marker.header.stamp = current_time;
+        text_marker.ns = "driving_way_status";
+        text_marker.id = 0;
+        text_marker.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+        text_marker.action = visualization_msgs::msg::Marker::ADD;
+        text_marker.pose.position.x = 0.0;
+        text_marker.pose.position.y = 0.0;
+        text_marker.pose.position.z = 0.8;
+        text_marker.scale.z = 0.8;
+        if (is_unknown) {
+            text_marker.text = "DRIVING WAY UNKNOWN (NO LANE)";
+            text_marker.color.r = 1.0f;
+            text_marker.color.g = 0.2f;
+            text_marker.color.b = 0.2f;
+            text_marker.color.a = 1.0f;
+        } else {
+            text_marker.text = "DRIVING WAY LOST (USING PREVIOUS)";
+            text_marker.color.r = 1.0f;
+            text_marker.color.g = 0.5f;
+            text_marker.color.b = 0.0f;
+            text_marker.color.a = 1.0f;
+        }
+        text_marker.lifetime = rclcpp::Duration(0, int64_t(0.2*1e9));
+        markerArray.markers.push_back(text_marker);
     }
     p_driving_way_marker_->publish(markerArray);
 }

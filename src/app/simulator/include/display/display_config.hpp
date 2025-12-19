@@ -21,6 +21,12 @@ typedef struct {
     std::string mesh_dir{""};
 
     double loop_rate_hz{100.0};
+
+    // ROI size (relative to ego body frame)
+    double ROI_front{20.0};
+    double ROI_rear{5.0};
+    double ROI_left{4.0};
+    double ROI_right{4.0};
 } DisplayConfig;
 
 #endif // __DISPLAY_CONFIG_HPP__

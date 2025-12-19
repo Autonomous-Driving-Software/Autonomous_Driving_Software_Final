@@ -27,6 +27,7 @@
 class PerceptionNode : public rclcpp::Node {
     public:
         explicit PerceptionNode(const std::string& node_name, const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
+        PerceptionNode(const std::string& node_name, const rclcpp::NodeOptions& options, bool enable_ros_io);
         virtual ~PerceptionNode();
 
         void ProcessParams();
@@ -37,6 +38,9 @@ class PerceptionNode : public rclcpp::Node {
             double mean_x{0.0};
             std::vector<interface::Point2D> points;
         };
+
+        // Test accessor
+        friend class PerceptionNodeTestAccessor;
 
     private:
 
@@ -121,6 +125,7 @@ class PerceptionNode : public rclcpp::Node {
         // Flag
         bool b_is_simulator_on_ = false;
         bool b_is_lane_points_ = false;
+        bool enable_ros_io_{true};
   
     };
 

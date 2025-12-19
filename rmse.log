@@ -1,0 +1,8 @@
+[Info] BothSides RMSE  left=5.75917e-16 right=5.75917e-16
+       Left coeff  (a0,a1,a2,a3)=(1.75,6.85832e-16,-1.58051e-16,8.72911e-18)
+       Right coeff (a0,a1,a2,a3)=(-1.75,-6.85832e-16,1.58051e-16,-8.72911e-18)
+[Info] BothSides DrivingWay id=driving_way_center (a0,a1,a2,a3)=(0,0,0,0)
+[Info] SingleSide RMSE left=5.75917e-16
+       Left coeff (a0,a1,a2,a3)=(1.75,6.85832e-16,-1.58051e-16,8.72911e-18)
+[Info] SingleSide DrivingWay id=driving_way_offset (a0,a1,a2,a3)=(-0.25,6.85832e-16,-1.58051e-16,8.72911e-18)
+[Pass] perception lane tests

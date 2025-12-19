@@ -89,6 +89,21 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
+if(BUILD_TESTING)
+  add_executable(test_perception_lanes
+      test/test_perception_lanes.cpp
+      src/perception_node.cpp
+  )
+  target_compile_definitions(test_perception_lanes PRIVATE PERCEPTION_NODE_NO_MAIN)
+  ament_target_dependencies(test_perception_lanes
+      rclcpp
+      std_msgs
+      ad_msgs
+      tf2
+      tf2_ros
+  )
+endif()
+
 ##################################################################
 # Find and load build settings from external packages
 ##################################################################

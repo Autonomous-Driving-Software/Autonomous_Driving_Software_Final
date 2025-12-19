@@ -12,7 +12,11 @@
 using namespace Eigen;
 using namespace std;
 
-PerceptionNode::PerceptionNode(const std::string &node_name, const rclcpp::NodeOptions &options) : Node(node_name, options) {
+PerceptionNode::PerceptionNode(const std::string &node_name, const rclcpp::NodeOptions &options)
+    : PerceptionNode(node_name, options, true) {}
+
+PerceptionNode::PerceptionNode(const std::string &node_name, const rclcpp::NodeOptions &options, bool enable_ros_io)
+    : Node(node_name, options), enable_ros_io_(enable_ros_io) {
 
     //QoS init
     auto qos_profile = rclcpp::QoS(rclcpp::KeepLast(10));
@@ -38,31 +42,33 @@ PerceptionNode::PerceptionNode(const std::string &node_name, const rclcpp::NodeO
 
     //===========subscriber init===============
 
-    //(1) s_vehicle_state_
-    s_vehicle_state_ = 
-    this->create_subscription<ad_msgs::msg::VehicleState>(
-        "vehicle_state", qos_profile, std::bind(&PerceptionNode::CallbackVehicleState, this, std::placeholders::_1));
+    if (enable_ros_io_) {
+        //(1) s_vehicle_state_
+        s_vehicle_state_ = 
+        this->create_subscription<ad_msgs::msg::VehicleState>(
+            "vehicle_state", qos_profile, std::bind(&PerceptionNode::CallbackVehicleState, this, std::placeholders::_1));
 
-    //(2) s_lane_points_
-    s_lane_points_ =
-    this->create_subscription<ad_msgs::msg::LanePointData>(
-        "lane_points", qos_profile, std::bind(&PerceptionNode::CallbackLanePoints, this, std::placeholders::_1));
+        //(2) s_lane_points_
+        s_lane_points_ =
+        this->create_subscription<ad_msgs::msg::LanePointData>(
+            "lane_points", qos_profile, std::bind(&PerceptionNode::CallbackLanePoints, this, std::placeholders::_1));
 
 
-    //===========publisher init===============
+        //===========publisher init===============
 
-    p_driving_way_ = 
-    this->create_publisher<ad_msgs::msg::PolyfitLaneData>(
-        "driving_way", qos_profile);
+        p_driving_way_ = 
+        this->create_publisher<ad_msgs::msg::PolyfitLaneData>(
+            "driving_way", qos_profile);
 
-    p_poly_lanes_ = 
-    this->create_publisher<ad_msgs::msg::PolyfitLaneDataArray>(
-        "poly_lanes", qos_profile);
+        p_poly_lanes_ = 
+        this->create_publisher<ad_msgs::msg::PolyfitLaneDataArray>(
+            "poly_lanes", qos_profile);
 
-    // Timer init
-    t_run_node_ = this->create_wall_timer(
-        std::chrono::milliseconds((int64_t)(1000 / cfg_.loop_rate_hz)),
-        [this]() { this->Run(); });
+        // Timer init
+        t_run_node_ = this->create_wall_timer(
+            std::chrono::milliseconds((int64_t)(1000 / cfg_.loop_rate_hz)),
+            [this]() { this->Run(); });
+    }
 }
 
 PerceptionNode::~PerceptionNode() {}
@@ -485,7 +491,9 @@ interface::PolyfitLane PerceptionNode::FindDrivingWay(const interface::PolyfitLa
     // Case 3: 폴리핏 차선 없음 -> 이전 값을 유지하거나 기본값 반환
     if (!has_candidate) {
         if (has_prev_driving_way_) {
-            return prev_driving_way_;
+            interface::PolyfitLane lost = prev_driving_way_;
+            lost.id = "driving_way_lost";
+            return lost;
         }
         driving_way_.id = "driving_way_unknown";
         return driving_way_;
@@ -505,6 +513,7 @@ interface::PolyfitLane PerceptionNode::FindDrivingWay(const interface::PolyfitLa
     return driving_way_;
 }
 
+#ifndef PERCEPTION_NODE_NO_MAIN
 int main(int argc, char **argv) {
     std::string node_name = "perception_node";
 
@@ -514,3 +523,4 @@ int main(int argc, char **argv) {
     rclcpp::shutdown();
     return 0;
 }
+#endif // PERCEPTION_NODE_NO_MAIN

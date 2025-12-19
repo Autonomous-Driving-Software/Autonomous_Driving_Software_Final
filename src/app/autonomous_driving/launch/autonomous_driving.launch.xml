@@ -3,9 +3,9 @@
     <arg name="ns1" default="ego"/>
     <arg name="loop_rate_hz" default="100.0"/>
     <!-- Perception tuning -->
-    <arg name="slice_width" default="0.5"/>
+    <arg name="slice_width" default="0.4"/>
     <arg name="cluster_threshold" default="0.4"/>
-    <arg name="gate_width" default="0.4"/>
+    <arg name="gate_width" default="0.3"/>
     <arg name="hist_bin_width_scale" default="0.25"/>
     <arg name="side_lane_window" default="0.4"/>
     <arg name="lane_disconnect_gap" default="0.4"/>
